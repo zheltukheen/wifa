@@ -1,7 +1,8 @@
 import Foundation
 
 struct OUIParser {
-    static let ouiVendors: [String: String] = [
+    // Базовый вшитый словарь на случай отсутствия внешней базы
+    static let builtIn: [String: String] = [
         "00:1A:2B": "Apple",
         "00:1B:63": "Cisco",
         "00:1D:D8": "ASUS",
@@ -24,8 +25,31 @@ struct OUIParser {
         "20:76:93": "Realtek Semiconductor",
     ]
     
+    private static var cached: [String: String]? = nil
+    
+    /// Ленивая подгрузка базы OUI из `oui.csv` в bundle (формат: `OUI,Vendor`) с fallback на встроенный словарь.
+    private static func db() -> [String: String] {
+        if let c = cached { return c }
+        if let url = Bundle.main.url(forResource: "oui", withExtension: "csv"),
+           let text = try? String(contentsOf: url) {
+            var map: [String: String] = [:]
+            for line in text.split(separator: "\n") {
+                let parts = line.split(separator: ",", maxSplits: 1).map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                if parts.count == 2 {
+                    map[parts[0].uppercased()] = parts[1]
+                }
+            }
+            cached = map.isEmpty ? builtIn : map
+            return cached!
+        }
+        cached = builtIn
+        return cached!
+    }
+    
     static func vendor(for bssid: String) -> String {
-        let key = bssid.uppercased().prefix(8)
-        return ouiVendors[String(key)] ?? String(key)
+        let trimmed = bssid.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "-" }
+        let key = trimmed.uppercased().prefix(8)
+        return db()[String(key)] ?? String(key)
     }
 }

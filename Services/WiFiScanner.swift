@@ -51,8 +51,9 @@ class WiFiScanner {
                 }
             }()
             
-            // Получаем noise через noiseMeasurement
-            let noiseValue = net.noiseMeasurement > 0 ? Int(net.noiseMeasurement) : nil
+            // Получаем noise через noiseMeasurement (отрицательные значения валидны для dBm)
+            let noiseRaw = net.noiseMeasurement
+            let noiseValue = noiseRaw != 0 ? Int(noiseRaw) : nil
             let snrValue = noiseValue.map { Int(net.rssiValue) - $0 }
             
             // Вычисляем seen (секунды с последнего обнаружения)
@@ -63,10 +64,18 @@ class WiFiScanner {
             let deviceName = Self.getInterfaceProperty(name: "interfaceName") as? String
             
             // Пытаемся получить дополнительные данные через reflection
-            let basicRates = Self.getProperty(object: net, mirror: mirror, name: "basicRates") as? [Double]
+            var basicRates = Self.getProperty(object: net, mirror: mirror, name: "basicRates") as? [Double]
             let beaconInterval = Self.getProperty(object: net, mirror: mirror, name: "beaconInterval") as? Int
-            let channelUtilization = Self.getProperty(object: net, mirror: mirror, name: "channelUtilization") as? Int
-            let fastTransition = Self.getProperty(object: net, mirror: mirror, name: "fastTransition") as? Bool
+            var channelUtilization = Self.getProperty(object: net, mirror: mirror, name: "channelUtilization") as? Int
+            var fastTransition = Self.getProperty(object: net, mirror: mirror, name: "fastTransition") as? Bool
+            
+            // Попробуем достать IE‑данные и распарсить поля, если CoreWLAN их не даёт
+            if let ieData = Self.getInformationElements(from: net, mirror: mirror) {
+                let parsed = IEParser.parse(ieData)
+                if basicRates == nil { basicRates = parsed.basicRates }
+                if channelUtilization == nil { channelUtilization = parsed.channelUtilization }
+                if fastTransition == nil { fastTransition = parsed.fastTransition }
+            }
             
             // Вычисляем minRate как часть от maxRate
             let minRate = Self.getProperty(object: net, mirror: mirror, name: "minRate") as? Double ?? (maxRate * 0.1)
@@ -85,7 +94,8 @@ class WiFiScanner {
                 }
             }()
             
-            let stations = Self.getProperty(object: net, mirror: mirror, name: "stations") as? Int
+            let stationsRuntime = Self.getProperty(object: net, mirror: mirror, name: "stations") as? Int
+            let stations = stationsRuntime ?? IEParser.parse(Self.getInformationElements(from: net, mirror: mirror) ?? Data()).stations
             
             // Вычисляем streams на основе generation
             let streams = Self.getProperty(object: net, mirror: mirror, name: "streams") as? Int ?? {
@@ -168,7 +178,7 @@ class WiFiScanner {
         
         // Известные ключи с примитивным возвратом — вызываем типобезопасно через IMP
         switch name {
-        case "beaconInterval", "channelUtilization", "stations", "streams":
+        case "beaconInterval", "channelUtilization", "stations", "streams", "security":
             typealias Fn = @convention(c) (AnyObject, Selector) -> Int
             let fn = unsafeBitCast(imp, to: Fn.self)
             return fn(object, selector)
@@ -220,9 +230,10 @@ class WiFiScanner {
     }
     
     private static func decodeSecurity(_ net: CWNetwork) -> String {
-        // Безопасно пытаемся получить приватное свойство через runtime, не используя KVC (которое может кидать исключение)
+        // Пытаемся получить приватное свойство через runtime типобезопасно
         let mirror = Mirror(reflecting: net)
-        if let val = Self.getProperty(object: net, mirror: mirror, name: "security") as? CWSecurity {
+        if let raw = Self.getProperty(object: net, mirror: mirror, name: "security") as? Int,
+           let val = CWSecurity(rawValue: raw) {
             switch val {
             case .none: return "Open"
             case .dynamicWEP: return "WEP"
@@ -236,7 +247,6 @@ class WiFiScanner {
             @unknown default: return "Other"
             }
         }
-        // Если доступа к полю нет — возвращаем дефолт
         return "-"
     }
     
@@ -280,5 +290,98 @@ class WiFiScanner {
             }
         }
         return "Wi-Fi 6/6E"
+    }
+    
+    /// Возвращает Data с сырыми Information Elements (если CoreWLAN отдаёт такой блок под одним из приватных имён)
+    private static func getInformationElements(from object: AnyObject, mirror: Mirror) -> Data? {
+        let candidates = [
+            "informationElementData",
+            "informationElements",
+            "informationElement",
+            "ieData",
+            "IEData",
+            "IE",
+            "ies",
+            "beaconIEData",
+            "beaconIE",
+            "beaconIEs"
+        ]
+        for name in candidates {
+            if let any = getProperty(object: object, mirror: mirror, name: name) {
+                if let d = any as? Data { return d }
+                if let nd = any as? NSData { return nd as Data }
+            }
+        }
+        return nil
+    }
+}
+
+// Local IE parser used when CoreWLAN doesn’t expose advanced fields
+struct IEParser {
+    struct Parsed {
+        var basicRates: [Double]? = nil
+        var channelUtilization: Int? = nil
+        var stations: Int? = nil
+        var fastTransition: Bool? = nil
+    }
+    
+    static func parse(_ data: Data) -> Parsed {
+        var result = Parsed()
+        var idx = 0
+        let bytes = [UInt8](data)
+        while idx + 2 <= bytes.count {
+            let id = Int(bytes[idx]); idx += 1
+            let len = Int(bytes[idx]); idx += 1
+            guard idx + len <= bytes.count else { break }
+            let payload = Array(bytes[idx..<(idx+len)])
+            idx += len
+            switch id {
+            case 1, 50: // Supported Rates / Extended Supported Rates
+                let rates = payload.map { b -> Double in
+                    let val = Double(b & 0x7F)
+                    return (val * 0.5)
+                }
+                if result.basicRates == nil {
+                    let basic = payload.enumerated().compactMap { (_, b) -> Double? in
+                        let r = Double(b & 0x7F) * 0.5
+                        return (b & 0x80) != 0 ? r : nil
+                    }
+                    result.basicRates = basic.isEmpty ? rates : basic
+                } else {
+                    result.basicRates = (result.basicRates ?? []) + rates
+                }
+            case 11: // BSS Load / QBSS Load
+                if payload.count >= 3 {
+                    let stations = Int(UInt16(payload[0]) | (UInt16(payload[1]) << 8))
+                    let util = Int(payload[2])
+                    result.stations = stations
+                    result.channelUtilization = util
+                }
+            case 48: // RSN
+                if payload.count >= 10 {
+                    var p = 0
+                    func take(_ n: Int) -> [UInt8]? {
+                        guard p + n <= payload.count else { return nil }
+                        let out = Array(payload[p..<(p+n)]); p += n; return out
+                    }
+                    _ = take(2)
+                    _ = take(4)
+                    guard let pcBytes = take(2) else { break }
+                    let pc = Int(UInt16(pcBytes[0]) | (UInt16(pcBytes[1]) << 8))
+                    _ = take(4 * pc)
+                    guard let akmCountBytes = take(2) else { break }
+                    let akmCount = Int(UInt16(akmCountBytes[0]) | (UInt16(akmCountBytes[1]) << 8))
+                    for _ in 0..<akmCount {
+                        guard let akm = take(4) else { break }
+                        if akm[0] == 0x00 && akm[1] == 0x0F && akm[2] == 0xAC {
+                            let t = akm[3]
+                            if t == 3 || t == 4 { result.fastTransition = true }
+                        }
+                    }
+                }
+            default: break
+            }
+        }
+        return result
     }
 }
