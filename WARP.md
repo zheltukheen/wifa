@@ -1,0 +1,139 @@
+# WARP.md
+
+This file provides guidance to WARP (warp.dev) when working with code in this repository.
+
+## Essential commands
+
+Build (Release, universal arm64 + x86_64) — produces build/WiFA-Universal/WiFA.app
+
+```bash
+./build.sh
+```
+
+Open in Xcode (recommended for iterative dev/run)
+
+```bash
+open WiFA.xcodeproj
+```
+
+CLI builds with xcodebuild
+
+```bash
+# Debug build for macOS
+xcodebuild build \
+  -scheme WiFA \
+  -configuration Debug \
+  -destination 'platform=macOS'
+
+# Clean
+xcodebuild clean -scheme WiFA -destination 'platform=macOS'
+
+# Open the built app after ./build.sh
+open build/WiFA-Universal/WiFA.app
+```
+
+Debug build and run from CLI
+
+```bash
+# Build Debug into a known DerivedData path and open the app
+xcodebuild build \
+  -scheme WiFA \
+  -configuration Debug \
+  -destination 'platform=macOS' \
+  -derivedDataPath build/DerivedData && \
+open build/DerivedData/Build/Products/Debug/WiFA.app
+```
+
+Tests
+
+- No unit tests are present in this repo at the moment. If/when XCTest targets are added, you can run a single test from CLI with:
+
+```bash
+xcodebuild test \
+  -scheme WiFA \
+  -destination 'platform=macOS' \
+  -only-testing:<TestTarget>/<TestCase>/<testMethod>
+```
+
+Lint/format
+
+- No lint/format tool is configured in the repo (e.g., SwiftLint/SwiftFormat are not present).
+
+## Other useful CLI snippets
+
+- Resolve the app’s bundle identifier from the Xcode project:
+
+```bash
+xcodebuild -showBuildSettings \
+  -scheme WiFA \
+  -destination 'platform=macOS' \
+  | awk -F' = ' '/PRODUCT_BUNDLE_IDENTIFIER/ {print $2; exit}'
+```
+
+- Reset saved UI preferences (column order/visibility/widths, refresh interval):
+
+```bash
+BID=$(xcodebuild -showBuildSettings -scheme WiFA -destination 'platform=macOS' | awk -F' = ' '/PRODUCT_BUNDLE_IDENTIFIER/ {print $2; exit}')
+for k in ColumnOrder ColumnVisibility ColumnWidths RefreshIntervalSeconds; do
+  defaults delete "$BID" "$k" 2>/dev/null || true
+done
+```
+
+## High-level architecture
+
+Platform and UI
+
+- Native macOS app using SwiftUI for screens plus an AppKit NSTableView bridged via NSViewRepresentable for a performant, highly customizable table.
+- Entry point WifiAnalyzerApp creates a single AnalyzerViewModel and shows MainTableView; the table itself is implemented in Views/WiFiTableView.swift using a Coordinator as NSTableView delegate/data source.
+
+State and view model
+
+- AnalyzerViewModel (MainActor, ObservableObject) owns the app state: the list of networks, error messages, column definitions (visibility, width, order), refresh interval, and sort state.
+- Periodic refresh is driven by a Timer (default 2s) that triggers WiFi scans when Location Services are authorized. Sorting is applied on receipt of new scan results.
+- User preferences persist to UserDefaults with keys: ColumnOrder, ColumnVisibility, ColumnWidths, RefreshIntervalSeconds. These drive table reconstruction without recreating columns unnecessarily.
+
+Table implementation (AppKit bridge)
+
+- WiFiTableView builds NSTableView columns from the current columnDefinitions, maintains a signature of the last-applied configuration to avoid redundant work, and performs in-place diffs when visibility/order/width change.
+- Sorting integrates with NSTableView sort descriptors; the Coordinator syncs the table’s sort indicator with the view model (currentSortKey/isSortAscending) and updates sortDescriptors only when they drift.
+- Column reordering is observed via NSTableView.columnDidMoveNotification; new order is written back to the view model and persisted.
+
+Scanning and data model
+
+- WiFiScanner (Services) uses CoreWLAN (CWWiFiClient/CWNetwork) to scan, augmenting CWNetwork with additional properties accessed via a combination of Swift Mirror and Objective‑C runtime IMP calls.
+  - Primitive returns (e.g., Int, Double, Bool) are accessed with typed IMP signatures to avoid interpreting primitives as object pointers.
+  - Per‑BSSID firstSeen/lastSeen timestamps are cached to compute seen (seconds since last observation).
+  - Additional derived fields include centerFrequency from channel + band, SNR from RSSI − noise, generation from channel number, and a fallback maxRate from generation × channel width.
+- OUIParser maps the BSSID prefix (OUI) to a vendor name via a small in-repo dictionary.
+- NetworkModel aggregates both primary and advanced fields (e.g., basicRates, beaconInterval, channelUtilization, protectionMode, streams, wps) so the UI can selectively expose them.
+
+Data flow
+
+1. User opens app → WifiAnalyzerApp instantiates AnalyzerViewModel and shows MainTableView.
+2. AnalyzerViewModel requests Location Services via LocationManager; if authorized, starts periodic Timer.
+3. On each tick → WiFiScanner.scan() queries CoreWLAN and constructs [NetworkModel] with derived fields and cached first/last seen.
+4. Back on MainActor, AnalyzerViewModel updates networks, applies current sort, and sets/clears error messages.
+5. WiFiTableView reads columnDefinitions to render columns, diffs columns on updates, and reflects sort state via Coordinator.
+6. User column moves/toggles update columnDefinitions → persisted to UserDefaults (ColumnOrder/ColumnVisibility/ColumnWidths).
+
+Permissions and requirements
+
+- Location Services permission is required to display SSID/BSSID. The app requests authorization via Utils/LocationManager (CLLocationManager).
+- Info.plist contains NSLocationUsageDescription to explain the need for access.
+- README requirements: macOS 13+; works on Apple Silicon and Intel.
+
+## Extending the table/fields
+
+To add a new column that participates in sorting and persistence:
+
+1. Add the property to `Models/NetworkModel.swift`.
+2. Populate it in `Services/WiFiScanner.swift` when constructing `NetworkModel`.
+3. Register the column in `ViewModels/AnalyzerViewModel.swift` under `defaultColumnsConfig` with a stable id, title, default visibility, and width.
+4. Render the value in `Views/WiFiTableView.swift` inside `Coordinator.tableView(_:viewFor:row:)` by handling the id in the `switch`.
+5. Make it sortable by adding a `case` to `AnalyzerViewModel.sort(by:ascending:)` that compares the new field. The `NSTableColumn` sort descriptor is already created from the id.
+6. Sorting UI indicators are kept in sync by `Coordinator.updateSortIndicators()`.
+
+## Notes for future agents
+
+- The Xcode project is WiFA.xcodeproj with scheme WiFA. The provided build.sh archives a universal Release build and copies the .app into build/WiFA-Universal/.
+- Because WiFiScanner relies on private/semiprivate CoreWLAN details via runtime reflection, property availability can vary across macOS versions; the implementation already guards many lookups and falls back where needed.
