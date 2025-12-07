@@ -1,0 +1,25 @@
+name: WiFA
+options:
+  bundleIdPrefix: ru.yourdomain
+  deploymentTarget:
+    macOS: '13.0'
+settings:
+  base:
+    MACOSX_DEPLOYMENT_TARGET: 13.0
+    SWIFT_VERSION: 5.9
+    DEVELOPMENT_TEAM: ""
+targets:
+  WiFA:
+    type: application
+    platform: macOS
+    sources:
+      - WifiAnalyzerApp.swift
+      - Models
+      - Services
+      - ViewModels
+      - Views
+      - Utils
+    info:
+      path: Info.plist
+      properties:
+        NSLocationUsageDescription: "Для отображения информации о BSSID/SSID, требуется доступ к Location Services."

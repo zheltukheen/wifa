@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode / Swift
+build/
+DerivedData/
+*.xcuserstate
+**/*.xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+
+# Swift Package Manager
+.swiftpm/
+.build/
+
+# Archives & Symbols
+*.dSYM
+*.dSYM.zip
+*.xcarchive
+
+# Logs
+*.log
+
+# IDEs
+.idea/
+.vscode/
+
+# Misc
+*.swp
+*.swo

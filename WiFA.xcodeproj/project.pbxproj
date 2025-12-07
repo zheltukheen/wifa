@@ -1,0 +1,343 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		36245084ECA4F4F214948642 /* OUIParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBCE61A832436130082EDAEC /* OUIParser.swift */; };
+		52CF4CC5AD5E69371F099813 /* WiFiScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54097B9F917D9C35FEFF88B6 /* WiFiScanner.swift */; };
+		5FFDD7BB183ACFFF5BF9DC82 /* WifiAnalyzerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FD168DE6176AD8421884C9B /* WifiAnalyzerApp.swift */; };
+		6790B1CD86EEA43B14979366 /* WiFiTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62024E6F893E4295349162CB /* WiFiTableView.swift */; };
+		91518EA9A395F98E1AC24203 /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3484B4FF2201807679C76786 /* LocationManager.swift */; };
+		9BFEBFA6E4409FABE343BB59 /* AnalyzerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C66FB61ECE0EF0D3C4233D85 /* AnalyzerViewModel.swift */; };
+		C61F66CCCD676D9265B951D0 /* NetworkModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D43A0B8206DD0F884B99C4A4 /* NetworkModel.swift */; };
+		CA093E366A69E5CD193755CC /* MainTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 890310A7A26864B2948ED454 /* MainTableView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		1FD168DE6176AD8421884C9B /* WifiAnalyzerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiAnalyzerApp.swift; sourceTree = "<group>"; };
+		2D4575B772C5F5432D0D5051 /* WiFA.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WiFA.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3484B4FF2201807679C76786 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
+		54097B9F917D9C35FEFF88B6 /* WiFiScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WiFiScanner.swift; sourceTree = "<group>"; };
+		62024E6F893E4295349162CB /* WiFiTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WiFiTableView.swift; sourceTree = "<group>"; };
+		890310A7A26864B2948ED454 /* MainTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTableView.swift; sourceTree = "<group>"; };
+		C66FB61ECE0EF0D3C4233D85 /* AnalyzerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyzerViewModel.swift; sourceTree = "<group>"; };
+		D43A0B8206DD0F884B99C4A4 /* NetworkModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkModel.swift; sourceTree = "<group>"; };
+		DBCE61A832436130082EDAEC /* OUIParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OUIParser.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		07941B643945EA5719C1827A /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				D43A0B8206DD0F884B99C4A4 /* NetworkModel.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		135411DBF13D286337DF5BFC = {
+			isa = PBXGroup;
+			children = (
+				1FD168DE6176AD8421884C9B /* WifiAnalyzerApp.swift */,
+				07941B643945EA5719C1827A /* Models */,
+				24347E94EB870D39608D2E35 /* Services */,
+				C885DF41AD3E4543CD9B224E /* Utils */,
+				A9B7C4985594E65A4FC2A2B8 /* ViewModels */,
+				96A03B1E3E4171B72E10938A /* Views */,
+				563BFD325C36CD782BE3739A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		24347E94EB870D39608D2E35 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				54097B9F917D9C35FEFF88B6 /* WiFiScanner.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		563BFD325C36CD782BE3739A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				2D4575B772C5F5432D0D5051 /* WiFA.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		96A03B1E3E4171B72E10938A /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				890310A7A26864B2948ED454 /* MainTableView.swift */,
+				62024E6F893E4295349162CB /* WiFiTableView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		A9B7C4985594E65A4FC2A2B8 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				C66FB61ECE0EF0D3C4233D85 /* AnalyzerViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		C885DF41AD3E4543CD9B224E /* Utils */ = {
+			isa = PBXGroup;
+			children = (
+				3484B4FF2201807679C76786 /* LocationManager.swift */,
+				DBCE61A832436130082EDAEC /* OUIParser.swift */,
+			);
+			path = Utils;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		04E5E99586AEB6F71D935E0F /* WiFA */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A673060836B611803967F1C9 /* Build configuration list for PBXNativeTarget "WiFA" */;
+			buildPhases = (
+				F2F2F934D186D793802B7272 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = WiFA;
+			packageProductDependencies = (
+			);
+			productName = WiFA;
+			productReference = 2D4575B772C5F5432D0D5051 /* WiFA.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		316C527B57E6A6FCF52E9CCF /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					04E5E99586AEB6F71D935E0F = {
+						DevelopmentTeam = "";
+					};
+				};
+			};
+			buildConfigurationList = 05469EC8B8EB19E501B2BC19 /* Build configuration list for PBXProject "WiFA" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 135411DBF13D286337DF5BFC;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				04E5E99586AEB6F71D935E0F /* WiFA */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		F2F2F934D186D793802B7272 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9BFEBFA6E4409FABE343BB59 /* AnalyzerViewModel.swift in Sources */,
+				91518EA9A395F98E1AC24203 /* LocationManager.swift in Sources */,
+				CA093E366A69E5CD193755CC /* MainTableView.swift in Sources */,
+				C61F66CCCD676D9265B951D0 /* NetworkModel.swift in Sources */,
+				36245084ECA4F4F214948642 /* OUIParser.swift in Sources */,
+				52CF4CC5AD5E69371F099813 /* WiFiScanner.swift in Sources */,
+				6790B1CD86EEA43B14979366 /* WiFiTableView.swift in Sources */,
+				5FFDD7BB183ACFFF5BF9DC82 /* WifiAnalyzerApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		34D5462BDFE35F36BB922DD9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		473AD0ABBFA258A57D739479 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ru.yourdomain.WiFA;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		994DD21708D0B86F3B605D8B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ru.yourdomain.WiFA;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		E54937BCD8E68A634AD729D2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		05469EC8B8EB19E501B2BC19 /* Build configuration list for PBXProject "WiFA" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				34D5462BDFE35F36BB922DD9 /* Debug */,
+				E54937BCD8E68A634AD729D2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A673060836B611803967F1C9 /* Build configuration list for PBXNativeTarget "WiFA" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				473AD0ABBFA258A57D739479 /* Debug */,
+				994DD21708D0B86F3B605D8B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 316C527B57E6A6FCF52E9CCF /* Project object */;
+}
