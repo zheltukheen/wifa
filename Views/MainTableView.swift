@@ -39,7 +39,6 @@ struct MainTableView: View {
                 viewModel: viewModel,
                 showInspector: $showInspector,
                 showingColumnMenu: $showingColumnMenu,
-                selectedBottomTab: $selectedBottomTab,
                 customIntervalText: $customIntervalText,
                 showingCustomIntervalAlert: $showingCustomIntervalAlert
             )
@@ -91,7 +90,8 @@ struct MainTableView: View {
                         }
                     }
                     
-                    // B. BOTTOM SECTION: Charts
+                    // B. BOTTOM SECTION: Tabs + Charts
+                    
                     // Горизонтальный разделитель (Resizer)
                     Rectangle()
                         .fill(Color(nsColor: .separatorColor))
@@ -116,18 +116,27 @@ struct MainTableView: View {
                         )
                         .zIndex(20)
                     
-                    // Chart Content
-                    ZStack {
-                        Color(nsColor: .controlBackgroundColor).edgesIgnoringSafeArea(.all)
+                    // Bottom Container
+                    VStack(spacing: 0) {
                         
-                        if selectedBottomTab == 0 {
-                            SpectrumView(viewModel: viewModel)
-                        } else {
-                            SignalHistoryView(viewModel: viewModel)
+                        // --- НОВОЕ МЕНЮ РЕЖИМОВ (Центрировано) ---
+                        BottomPanelTabs(selectedTab: $selectedBottomTab)
+                        
+                        Divider()
+                        
+                        // Chart Content
+                        ZStack {
+                            Color(nsColor: .controlBackgroundColor).edgesIgnoringSafeArea(.all)
+                            
+                            if selectedBottomTab == 0 {
+                                SpectrumView(viewModel: viewModel)
+                            } else {
+                                SignalHistoryView(viewModel: viewModel)
+                            }
                         }
+                        .clipped()
                     }
                     .frame(height: currentBottomPanelHeight)
-                    .clipped()
                 }
             }
         }
@@ -146,7 +155,6 @@ struct MainTableView: View {
             Text("Enter refresh interval in seconds:")
         }
         .onAppear {
-            // Проверка прав доступа при старте
             if !viewModel.isLocationAuthorized {
                 viewModel.requestLocationAuthorization()
             }
@@ -154,54 +162,84 @@ struct MainTableView: View {
     }
 }
 
-// MARK: - Toolbar Component
+// MARK: - New Bottom Tabs Component
+struct BottomPanelTabs: View {
+    @Binding var selectedTab: Int
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            
+            // 1. ВЫРАВНИВАНИЕ ПО ЦЕНТРУ: Spacer слева
+            Spacer()
+            
+            // Кнопка Спектр
+            TabButton(
+                title: "Спектр",
+                icon: "waveform.path.ecg",
+                isSelected: selectedTab == 0,
+                action: { selectedTab = 0 }
+            )
+            
+            // Разделитель между кнопками
+            Divider().frame(height: 16)
+            
+            // Кнопка История
+            TabButton(
+                title: "История",
+                icon: "clock.arrow.circlepath",
+                isSelected: selectedTab == 1,
+                action: { selectedTab = 1 }
+            )
+            
+            // 1. ВЫРАВНИВАНИЕ ПО ЦЕНТРУ: Spacer справа
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Material.bar)
+    }
+}
+
+struct TabButton: View {
+    let title: String
+    let icon: String
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                Text(title)
+            }
+            .font(.system(size: 13, weight: isSelected ? .medium : .regular))
+            .foregroundColor(isSelected ? .accentColor : .primary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+    }
+}
+
+// MARK: - Toolbar Component (Unified Settings)
 struct ToolbarView: View {
     @ObservedObject var viewModel: AnalyzerViewModel
     @Binding var showInspector: Bool
     @Binding var showingColumnMenu: Bool
-    @Binding var selectedBottomTab: Int
     @Binding var customIntervalText: String
     @Binding var showingCustomIntervalAlert: Bool
     
     var body: some View {
         HStack(spacing: 12) {
             
-            // 1. Scan Controls
-            HStack(spacing: 0) {
-                Button(action: { viewModel.refresh() }) {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .help("Refresh Now")
-                .buttonStyle(.borderless)
-                .frame(width: 30, height: 24)
-                
-                Divider().frame(height: 16)
-                
-                Menu {
-                    Picker("Interval", selection: Binding(
-                        get: { viewModel.refreshInterval },
-                        set: { viewModel.updateRefreshInterval(to: $0) }
-                    )) {
-                        Text("1s").tag(1.0)
-                        Text("3s").tag(3.0)
-                        Text("5s").tag(5.0)
-                        Text("10s").tag(10.0)
-                        Text("30s").tag(30.0)
-                    }
-                    Divider()
-                    Button("Custom...") {
-                        customIntervalText = String(Int(viewModel.refreshInterval))
-                        showingCustomIntervalAlert = true
-                    }
-                } label: {
-                    HStack(spacing: 2) {
-                        Image(systemName: "timer")
-                        Text("\(Int(viewModel.refreshInterval))s").font(.caption).monospacedDigit()
-                    }
-                }
-                .menuStyle(.borderlessButton)
-                .frame(width: 60)
+            // 1. Refresh Button (Left)
+            Button(action: { viewModel.refresh() }) {
+                Image(systemName: "arrow.clockwise")
             }
+            .help("Refresh Now")
+            .buttonStyle(.borderless)
+            .frame(width: 30, height: 24)
             .background(Color(nsColor: .controlBackgroundColor))
             .cornerRadius(6)
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2), lineWidth: 1))
@@ -229,46 +267,70 @@ struct ToolbarView: View {
             .cornerRadius(6)
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2), lineWidth: 1))
             
-            // 4. Signal Filter
-            Menu {
-                Text("Hide signals weaker than:")
-                Slider(value: $viewModel.minSignalThreshold, in: -100...(-30)) {
-                    Text("Min RSSI")
-                }
-                .frame(width: 150)
-                Text("\(Int(viewModel.minSignalThreshold)) dBm").font(.caption)
-            } label: {
-                Image(systemName: "speaker.wave.1.fill")
-                    .foregroundColor(viewModel.minSignalThreshold > -100 ? .accentColor : .primary)
-            }
-            .menuStyle(.borderlessButton)
-            .help("Signal Threshold Filter")
-            
             Spacer()
             
-            // 5. Bottom Tabs (Charts)
-            Picker("", selection: $selectedBottomTab) {
-                Image(systemName: "waveform.path.ecg").tag(0).help("Spectrum")
-                Image(systemName: "clock.arrow.circlepath").tag(1).help("History")
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 100)
-            
-            // 6. Right Controls
+            // 4. Right Controls (Settings & Tools)
             HStack(spacing: 16) {
-                // Settings Menu
+                
+                // --- UNIFIED SETTINGS MENU (Объединенное меню) ---
                 Menu {
-                    Picker("Remove old networks:", selection: $viewModel.removeAfterInterval) {
-                        ForEach(NetworkRemovalInterval.allCases) { Text($0.title).tag($0) }
+                    // Секция 1: Интервал сканирования
+                    Section {
+                        Picker("Scan Interval:", selection: Binding(
+                            get: { viewModel.refreshInterval },
+                            set: { viewModel.updateRefreshInterval(to: $0) }
+                        )) {
+                            Text("1s").tag(1.0)
+                            Text("3s").tag(3.0)
+                            Text("5s").tag(5.0)
+                            Text("10s").tag(10.0)
+                            Text("30s").tag(30.0)
+                        }
+                        
+                        // Кнопка Custom внутри меню
+                        Button("Custom Interval...") {
+                            customIntervalText = String(Int(viewModel.refreshInterval))
+                            showingCustomIntervalAlert = true
+                        }
+                    } header: {
+                        Text("Monitoring")
                     }
+                    
                     Divider()
-                    Picker("Signal Unit:", selection: $viewModel.signalDisplayMode) {
-                        ForEach(SignalDisplayMode.allCases) { Text($0.rawValue).tag($0) }
+                    
+                    // Секция 2: Фильтр сигнала (Перенесено сюда)
+                    Section {
+                        // Slider внутри меню
+                        Text("Min Signal: \(Int(viewModel.minSignalThreshold)) dBm")
+                        Slider(value: $viewModel.minSignalThreshold, in: -100...(-30)) {
+                            Text("Threshold")
+                        }
+                    } header: {
+                        Text("Filters")
                     }
+                    
+                    Divider()
+                    
+                    // Секция 3: Прочие настройки
+                    Section {
+                        Picker("Remove inactive after:", selection: $viewModel.removeAfterInterval) {
+                            ForEach(NetworkRemovalInterval.allCases) { Text($0.title).tag($0) }
+                        }
+                        
+                        Picker("Signal Unit:", selection: $viewModel.signalDisplayMode) {
+                            ForEach(SignalDisplayMode.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                    } header: {
+                        Text("Display")
+                    }
+                    
                 } label: {
+                    // Иконка Шестеренки
                     Image(systemName: "gearshape")
+                        .font(.system(size: 14))
                 }
                 .menuStyle(.borderlessButton)
+                .help("Settings & Monitoring Control")
                 
                 // Column Settings
                 Button(action: { showingColumnMenu.toggle() }) {
@@ -311,7 +373,7 @@ struct ToolbarView: View {
     }
 }
 
-// MARK: - Subviews
+// MARK: - Subviews (Остались без изменений)
 
 struct ErrorBanner: View {
     let message: String
@@ -365,7 +427,6 @@ struct ColumnSettingsView: View {
                             .foregroundStyle(.tertiary)
                             .frame(width: 20)
                         
-                        // Используем Binding для переключения
                         Toggle(isOn: Binding(
                             get: { col.isVisible },
                             set: { _ in viewModel.toggleColumn(col.id) }
@@ -383,7 +444,6 @@ struct ColumnSettingsView: View {
             Divider()
             
             HStack {
-                // Кнопка сброса: теперь вызывает корректный метод ViewModel
                 Button(action: {
                     withAnimation { viewModel.resetColumnsToDefault() }
                 }) {
@@ -479,10 +539,11 @@ struct NetworkInspectorView: View {
                                 DetailRow(label: "Width", value: network.channelWidth)
                                 DetailRow(label: "Generation", value: network.generation)
                                 DetailRow(label: "Max Rate", value: "\(Int(network.maxRate)) Mbps")
-                                // ИСПРАВЛЕНО: Добавлен дефолт для vendor и mode
                                 DetailRow(label: "Vendor", value: network.vendor)
                                 DetailRow(label: "Mode", value: network.mode)
-                                DetailRow(label: "Streams", value: network.streams.map { "\($0)" } ?? "-")                            }
+                                
+                                DetailRow(label: "Streams", value: network.streams.map { "\($0)" } ?? "-")
+                            }
                             .padding(.vertical, 4)
                         }
                         
@@ -490,10 +551,7 @@ struct NetworkInspectorView: View {
                         GroupBox("Security & Advanced") {
                             VStack(alignment: .leading, spacing: 8) {
                                 DetailRow(label: "Protocol", value: network.security)
-                                
-                                // ИСПРАВЛЕНО: protectionMode теперь безопасно разворачивается
                                 DetailRow(label: "Protection Mode", value: network.protectionMode ?? "Unknown")
-                                
                                 DetailRow(label: "WPS", value: network.wps ?? "N/A")
                                 DetailRow(label: "Fast Transition (802.11r)", value: network.fastTransition == true ? "Yes" : "No")
                                 if let cc = network.countryCode {
