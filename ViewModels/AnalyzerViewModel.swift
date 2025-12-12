@@ -1,245 +1,302 @@
 import Foundation
 import Combine
+import CoreWLAN
+import AppKit
+import SwiftUI
+import CoreLocation
 
-struct ColumnDefinition: Identifiable {
-    let id: String
-    let title: String
-    var isVisible: Bool
-    var width: CGFloat
-    var order: Int
+// MARK: - Enums & Settings
+enum SignalDisplayMode: String, CaseIterable, Identifiable {
+    case dbm = "dBm"
+    case percent = "%"
+    var id: String { rawValue }
 }
 
-@MainActor
-class AnalyzerViewModel: ObservableObject {
-    @Published var networks: [NetworkModel] = []
-    @Published var errorMessage: String? = nil
-    @Published var columnDefinitions: [ColumnDefinition] = []
-    @Published var isLocationAuthorized: Bool = false
-    @Published var refreshInterval: TimeInterval = 2.0
+enum NetworkRemovalInterval: TimeInterval, CaseIterable, Identifiable {
+    case oneMinute = 60
+    case twoMinutes = 120
+    case thirtyMinutes = 1800
+    case oneHour = 3600
+    case twoHours = 7200
     
-    // Текущее состояние сортировки (по умолчанию — по уровню сигнала по убыванию)
-    @Published var currentSortKey: String? = "signal"
-    @Published var isSortAscending: Bool = false
+    var id: TimeInterval { rawValue }
     
-    private let scanner = WiFiScanner()
-    let locationManager = LocationManager()
-    private let defaults = UserDefaults.standard
-    private var refreshTimer: Timer?
-    // Следим, чтобы одновременно не выполнялось несколько сканов
-    private var scanTask: Task<Void, Never>?
+    var title: String {
+        switch self {
+        case .oneMinute: return "1 minute"
+        case .twoMinutes: return "2 minutes"
+        case .thirtyMinutes: return "30 minutes"
+        case .oneHour: return "1 hour"
+        case .twoHours: return "2 hours"
+        }
+    }
+}
+
+// MARK: - Models
+struct ColumnDefinition: Identifiable, Codable {
+    var id: String
+    var title: String
+    var width: CGFloat
+    var isVisible: Bool
+    var order: Int
     
-    // Конфигурация столбцов по умолчанию
-    private let defaultColumnsConfig: [(id: String, title: String, isVisibleByDefault: Bool, width: CGFloat)] = [
-        // Видимые по умолчанию (Network Name в самом начале)
-        ("ssid", "Network Name (SSID)", true, 180.0),
-        ("bssid", "BSSID", true, 150.0),
-        ("band", "Band", true, 100.0),
-        ("channel", "Channel", true, 80.0),
-        ("channelWidth", "Channel Width", true, 120.0),
-        ("generation", "Generation", true, 120.0),
-        ("maxRate", "Max Rate (Mbps)", true, 120.0),
-        ("mode", "Mode", true, 100.0),
-        ("security", "Security", true, 120.0),
-        ("seen", "Seen (s)", true, 100.0),
-        ("signal", "Signal (dBm)", true, 120.0),
-        ("vendor", "Vendor", true, 150.0),
-        // Скрытые по умолчанию
-        ("basicRates", "Basic Rates", false, 120.0),
-        ("beaconInterval", "Beacon Interval", false, 120.0),
-        ("centerFrequency", "Center Frequency", false, 140.0),
-        ("channelUtilization", "Channel Utilization", false, 150.0),
-        ("countryCode", "Country Code", false, 120.0),
-        ("deviceName", "Device Name", false, 150.0),
-        ("fastTransition", "Fast Transition", false, 130.0),
-        ("firstSeen", "First Seen", false, 150.0),
-        ("lastSeen", "Last Seen", false, 150.0),
-        ("minRate", "Min Rate", false, 120.0),
-        ("noise", "Noise (dBm)", false, 120.0),
-        ("protectionMode", "Protection Mode", false, 140.0),
-        ("snr", "SNR", false, 100.0),
-        ("stations", "Stations", false, 100.0),
-        ("streams", "Streams", false, 100.0),
-        ("type", "Type", false, 100.0),
-        ("wps", "WPS", false, 120.0)
+    static let defaults: [ColumnDefinition] = [
+        .init(id: "ssid", title: "SSID", width: 150, isVisible: true, order: 0),
+        .init(id: "bssid", title: "BSSID", width: 120, isVisible: true, order: 1),
+        .init(id: "signal", title: "Signal", width: 60, isVisible: true, order: 2),
+        .init(id: "channel", title: "Channel", width: 60, isVisible: true, order: 3),
+        .init(id: "width", title: "Width", width: 60, isVisible: true, order: 4),
+        .init(id: "band", title: "Band", width: 60, isVisible: true, order: 5),
+        .init(id: "security", title: "Security", width: 100, isVisible: true, order: 6),
+        .init(id: "vendor", title: "Vendor", width: 150, isVisible: true, order: 7),
+        .init(id: "maxRate", title: "Max Rate", width: 80, isVisible: true, order: 8),
+        .init(id: "mode", title: "Mode", width: 80, isVisible: false, order: 9),
+        .init(id: "generation", title: "Generation", width: 80, isVisible: true, order: 10),
+        .init(id: "firstSeen", title: "First Seen", width: 120, isVisible: false, order: 11),
+        .init(id: "lastSeen", title: "Last Seen", width: 120, isVisible: false, order: 12),
+        .init(id: "wps", title: "WPS", width: 80, isVisible: false, order: 13)
     ]
+}
+
+// MARK: - ViewModel
+class AnalyzerViewModel: ObservableObject {
+    // MARK: - Data Source
+    private let scanner = WiFiScanner()
+    private var persistentNetworks: [String: NetworkModel] = [:]
+    
+    @Published var networks: [NetworkModel] = []
+    @Published var currentConnectedBSSID: String? = nil
+    @Published var signalHistory: [String: [Int]] = [:]
+    @Published var selectedBSSID: String? = nil
+    
+    var selectedNetwork: NetworkModel? {
+        networks.first { $0.bssid == selectedBSSID }
+    }
+
+    // MARK: - Settings & Filters
+    @Published var filterBand24 = true { didSet { scheduleFilterUpdate() } }
+    @Published var filterBand5 = true { didSet { scheduleFilterUpdate() } }
+    @Published var filterBand6 = true { didSet { scheduleFilterUpdate() } }
+    @Published var minSignalThreshold: Double = -100 { didSet { scheduleFilterUpdate() } }
+    @Published var searchText: String = "" { didSet { scheduleFilterUpdate() } }
+    
+    @Published var removeAfterInterval: NetworkRemovalInterval = .twoMinutes { didSet { scheduleFilterUpdate() } }
+    @Published var signalDisplayMode: SignalDisplayMode = .dbm { didSet { objectWillChange.send() } }
+    
+    @Published var refreshInterval: Double = 5.0
+    @Published var isSortAscending: Bool = true
+    @Published var currentSortKey: String? = "ssid"
+    @Published var columnDefinitions: [ColumnDefinition] = ColumnDefinition.defaults
+    @Published var errorMessage: String?
+    @Published var isLocationAuthorized = false
+    
+    let locationManager = LocationManager()
+    private var timer: AnyCancellable?
+    private var cancellables = Set<AnyCancellable>()
     
     init() {
-        setupColumns()
-        setupLocationManager()
-        loadRefreshInterval()
-        startRefreshTimerIfAuthorized()
-        refresh()
+        setupLocationBinding()
+        loadColumnSettings()
+        startScanning()
     }
     
-    private func setupLocationManager() {
-        locationManager.onAuthorizationChanged = { [weak self] (authorized: Bool) in
-            Task { @MainActor in
-                guard let self else { return }
-                self.isLocationAuthorized = authorized
-                if authorized {
-                    self.errorMessage = nil
-                    self.startRefreshTimerIfAuthorized()
-                    self.refresh()
-                } else {
-                    self.refreshTimer?.invalidate()
-                    self.errorMessage = "Для отображения SSID и BSSID требуется разрешение Location Services. Пожалуйста, включите его в System Settings → Privacy & Security → Location Services."
-                }
-            }
-        }
-        locationManager.requestAuthorization()
-        isLocationAuthorized = locationManager.isAuthorized
-    }
-    
-    private func setupColumns(useSavedSettings: Bool = true) {
-        // Загружаем сохраненные настройки (если нужно)
-        let savedOrder: [String]
-        let savedVisibility: [String: Bool]
-        let savedWidths: [String: Double]
-        
-        if useSavedSettings {
-            savedOrder = defaults.array(forKey: "ColumnOrder") as? [String] ?? []
-            savedVisibility = defaults.dictionary(forKey: "ColumnVisibility") as? [String: Bool] ?? [:]
-            savedWidths = defaults.dictionary(forKey: "ColumnWidths") as? [String: Double] ?? [:]
-        } else {
-            savedOrder = []
-            savedVisibility = [:]
-            savedWidths = [:]
-        }
-        
-        columnDefinitions = defaultColumnsConfig.enumerated().map { index, col in
-            let (id, title, defaultVisible, defaultWidth) = col
-            let order = savedOrder.firstIndex(of: id) ?? index
-            let isVisible = savedVisibility[id] ?? defaultVisible
-            let width = CGFloat(savedWidths[id] ?? Double(defaultWidth))
-            
-            return ColumnDefinition(
-                id: id,
-                title: title,
-                isVisible: isVisible,
-                width: width,
-                order: order
-            )
-        }.sorted { $0.order < $1.order }
-    }
-    
-    func saveColumnSettings() {
-        defaults.set(columnDefinitions.map { $0.id }, forKey: "ColumnOrder")
-        defaults.set(Dictionary(uniqueKeysWithValues: columnDefinitions.map { ($0.id, $0.isVisible) }), forKey: "ColumnVisibility")
-        defaults.set(Dictionary(uniqueKeysWithValues: columnDefinitions.map { ($0.id, $0.width) }), forKey: "ColumnWidths")
-    }
-    
-    func resetColumnsToDefault() {
-        // Удаляем сохранённые настройки и пересоздаём столбцы по умолчанию
-        defaults.removeObject(forKey: "ColumnOrder")
-        defaults.removeObject(forKey: "ColumnVisibility")
-        defaults.removeObject(forKey: "ColumnWidths")
-        setupColumns(useSavedSettings: false)
-        saveColumnSettings()
-    }
-    
-    func toggleColumn(_ id: String) {
-        if let index = columnDefinitions.firstIndex(where: { $0.id == id }) {
-            columnDefinitions[index].isVisible.toggle()
-            saveColumnSettings()
+    private func scheduleFilterUpdate() {
+        DispatchQueue.main.async { [weak self] in
+            self?.applyFilters()
         }
     }
     
-    private func loadRefreshInterval() {
-        let saved = defaults.double(forKey: "RefreshIntervalSeconds")
-        if saved > 0 {
-            refreshInterval = saved
-        } else {
-            refreshInterval = 2.0
-        }
-    }
-    
-    private func startRefreshTimerIfAuthorized() {
-        refreshTimer?.invalidate()
-        guard isLocationAuthorized, refreshInterval > 0 else { return }
-        
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            Task { @MainActor in
-                self.refresh()
-            }
-        }
-    }
-    
-    func updateRefreshInterval(to seconds: TimeInterval) {
-        refreshInterval = seconds
-        defaults.set(seconds, forKey: "RefreshIntervalSeconds")
-        startRefreshTimerIfAuthorized()
-    }
-    
+    // MARK: - Scanning Logic
     func refresh() {
-        guard isLocationAuthorized else {
-            locationManager.requestAuthorization()
-            return
-        }
+        let currentBSSID = CWWiFiClient.shared().interface()?.bssid()
         
-        // Не запускаем новый скан, если предыдущий ещё идёт
-        if let task = scanTask, !task.isCancelled {
-            return
-        }
-        
-        let scannerRef = self.scanner
-        scanTask = Task.detached(priority: .background) { [weak self] in
-            let nets = scannerRef.scan()
-            await MainActor.run {
-                guard let self else { return }
-                self.networks = nets
-                if let key = self.currentSortKey {
-                    self.sort(by: key, ascending: self.isSortAscending)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            // Сканируем. Если вернется пустой массив из-за ошибки, mergeNetworks обработает это.
+            let scannedList = self.scanner.scan()
+            
+            DispatchQueue.main.async {
+                self.currentConnectedBSSID = currentBSSID
+                self.mergeNetworks(scannedList)
+                
+                // Если сканер вернул пустоту, а права есть - возможно стоит попробовать еще раз через секунду
+                if scannedList.isEmpty && self.isLocationAuthorized {
+                    print("Scan returned 0 networks. Retrying might be needed.")
                 }
-                if nets.isEmpty {
-                    self.errorMessage = "Не удалось найти Wi-Fi сети. Проверьте, что Wi-Fi включен и Location Services разрешены."
-                } else {
-                    self.errorMessage = nil
-                }
-                // Сброс указателя на задачу после завершения
-                self.scanTask = nil
             }
         }
+    }
+    
+    private func mergeNetworks(_ newScan: [NetworkModel]) {
+        let now = Date()
+        
+        // 1. Обновляем существующие
+        for net in newScan {
+            persistentNetworks[net.bssid] = net
+            updateSignalHistory(for: net)
+        }
+        
+        // 2. Очистка старых
+        let threshold = now.addingTimeInterval(-removeAfterInterval.rawValue)
+        for (bssid, net) in persistentNetworks {
+            if let lastSeen = net.lastSeen, lastSeen < threshold {
+                persistentNetworks.removeValue(forKey: bssid)
+                signalHistory.removeValue(forKey: bssid)
+            }
+        }
+        
+        applyFilters()
+    }
+    
+    private func updateSignalHistory(for net: NetworkModel) {
+        let maxHistoryPoints = 60
+        if signalHistory[net.bssid] == nil {
+            signalHistory[net.bssid] = []
+        }
+        signalHistory[net.bssid]?.append(net.signal)
+        if let count = signalHistory[net.bssid]?.count, count > maxHistoryPoints {
+            signalHistory[net.bssid]?.removeFirst(count - maxHistoryPoints)
+        }
+    }
+    
+    private func applyFilters() {
+        let allItems = Array(persistentNetworks.values)
+        
+        var filtered = allItems.filter { net in
+            if !filterBand24 && (net.band.contains("2.4")) { return false }
+            if !filterBand5 && (net.band.contains("5")) { return false }
+            if !filterBand6 && (net.band.contains("6")) { return false }
+            if Double(net.signal) < minSignalThreshold { return false }
+            if !searchText.isEmpty {
+                let text = searchText.lowercased()
+                let matches = net.ssid.lowercased().contains(text) ||
+                              net.bssid.lowercased().contains(text) ||
+                              net.vendor.lowercased().contains(text)
+                if !matches { return false }
+            }
+            return true
+        }
+        
+        if let key = currentSortKey {
+            let isAsc = isSortAscending
+            filtered.sort { p1, p2 in
+                switch key {
+                case "ssid": return isAsc ? p1.ssid < p2.ssid : p1.ssid > p2.ssid
+                case "signal": return isAsc ? p1.signal < p2.signal : p1.signal > p2.signal
+                case "channel": return isAsc ? p1.channel < p2.channel : p1.channel > p2.channel
+                case "bssid": return isAsc ? p1.bssid < p2.bssid : p1.bssid > p2.bssid
+                case "vendor": return isAsc ? p1.vendor < p2.vendor : p1.vendor > p2.vendor
+                case "security": return isAsc ? p1.security < p2.security : p1.security > p2.security
+                case "width": return isAsc ? p1.channelWidth < p2.channelWidth : p1.channelWidth > p2.channelWidth
+                case "firstSeen":
+                    let d1 = p1.firstSeen ?? Date.distantPast
+                    let d2 = p2.firstSeen ?? Date.distantPast
+                    return isAsc ? d1 < d2 : d1 > d2
+                case "lastSeen":
+                    let d1 = p1.lastSeen ?? Date.distantPast
+                    let d2 = p2.lastSeen ?? Date.distantPast
+                    return isAsc ? d1 < d2 : d1 > d2
+                default: return isAsc ? p1.ssid < p2.ssid : p1.ssid > p2.ssid
+                }
+            }
+        }
+        
+        networks = filtered
+    }
+    
+    // MARK: - Sorting & Config
+    func updateRefreshInterval(to newValue: Double) {
+        refreshInterval = newValue
+        startScanning()
+    }
+    
+    private func startScanning() {
+        timer?.cancel()
+        timer = Timer.publish(every: refreshInterval, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in self?.refresh() }
     }
     
     func sort(by key: String, ascending: Bool) {
         currentSortKey = key
         isSortAscending = ascending
-        networks.sort { a, b in
-            // Для убывающей сортировки меняем местами операнды
-            let (net1, net2) = ascending ? (a, b) : (b, a)
-            switch key {
-            case "bssid": return net1.bssid < net2.bssid
-            case "band": return net1.band < net2.band
-            case "channel": return net1.channel < net2.channel
-            case "channelWidth": return net1.channelWidth < net2.channelWidth
-            case "generation": return net1.generation < net2.generation
-            case "maxRate": return net1.maxRate < net2.maxRate
-            case "mode": return net1.mode < net2.mode
-            case "ssid": return net1.ssid < net2.ssid
-            case "security": return net1.security < net2.security
-            case "seen": return net1.seen < net2.seen
-            case "signal": return net1.signal < net2.signal
-            case "vendor": return net1.vendor < net2.vendor
-            case "centerFrequency": return (net1.centerFrequency ?? 0) < (net2.centerFrequency ?? 0)
-            case "countryCode": return (net1.countryCode ?? "") < (net2.countryCode ?? "")
-            case "deviceName": return (net1.deviceName ?? "") < (net2.deviceName ?? "")
-            case "firstSeen": return (net1.firstSeen ?? Date.distantPast) < (net2.firstSeen ?? Date.distantPast)
-            case "lastSeen": return (net1.lastSeen ?? Date.distantPast) < (net2.lastSeen ?? Date.distantPast)
-            case "minRate": return (net1.minRate ?? 0) < (net2.minRate ?? 0)
-            case "noise": return (net1.noise ?? 0) < (net2.noise ?? 0)
-            case "snr": return (net1.snr ?? 0) < (net2.snr ?? 0)
-            case "stations": return (net1.stations ?? 0) < (net2.stations ?? 0)
-            case "streams": return (net1.streams ?? 0) < (net2.streams ?? 0)
-            case "type": return (net1.type ?? "") < (net2.type ?? "")
-            case "wps": return (net1.wps ?? "") < (net2.wps ?? "")
-            default: return false
+        applyFilters()
+    }
+    
+    // MARK: - Export
+    func exportCSV() {
+        let headers = columnDefinitions.map { $0.title }.joined(separator: ",")
+        let rows = networks.map { net -> String in
+            return "\(net.ssid),\(net.bssid),\(net.signal),\(net.channel),\(net.security),\(net.vendor)"
+        }.joined(separator: "\n")
+        
+        let csvContent = "\(headers)\n\(rows)"
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.commaSeparatedText]
+        savePanel.nameFieldStringValue = "WiFi_Scan_Report.csv"
+        savePanel.begin { response in
+            if response == .OK, let url = savePanel.url {
+                try? csvContent.write(to: url, atomically: true, encoding: .utf8)
             }
         }
     }
     
-    deinit {
-        refreshTimer?.invalidate()
-        scanTask?.cancel()
+    // MARK: - Column Management
+    func toggleColumn(_ id: String) {
+        if let idx = columnDefinitions.firstIndex(where: { $0.id == id }) {
+            columnDefinitions[idx].isVisible.toggle()
+            saveColumnSettings()
+            objectWillChange.send()
+        }
+    }
+    
+    func resetColumnsToDefault() {
+        columnDefinitions = ColumnDefinition.defaults
+        saveColumnSettings()
+    }
+    
+    func saveColumnSettings() {
+        if let data = try? JSONEncoder().encode(columnDefinitions) {
+            UserDefaults.standard.set(data, forKey: "WifiColumns")
+        }
+    }
+    
+    private func loadColumnSettings() {
+        if let data = UserDefaults.standard.data(forKey: "WifiColumns"),
+           let saved = try? JSONDecoder().decode([ColumnDefinition].self, from: data) {
+            columnDefinitions = saved
+        }
+    }
+    
+    private func setupLocationBinding() {
+        locationManager.$authorizationStatus
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] status in
+                self?.updateAuthorizationStatus(status)
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func updateAuthorizationStatus(_ status: CLAuthorizationStatus) {
+        let isAuthorized = (status == .authorizedAlways || status == .authorized)
+        self.isLocationAuthorized = isAuthorized
+        
+        // ИСПРАВЛЕНИЕ: Если права получены, сразу запускаем сканирование
+        if isAuthorized {
+            print("Location authorized! Refreshing networks...")
+            startScanning() // Перезапуск таймера
+            refresh()       // Немедленное обновление
+        }
+    }
+    
+    func formatSignal(_ dbm: Int) -> String {
+        switch signalDisplayMode {
+        case .dbm:
+            return "\(dbm)"
+        case .percent:
+            let quality = max(0, min(100, (dbm + 100) * 2))
+            return "\(quality)%"
+        }
     }
 }

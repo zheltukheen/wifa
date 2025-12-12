@@ -6,6 +6,10 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 Build (Release, universal arm64 + x86_64) — produces build/WiFA-Universal/WiFA.app
 
+Output structure:
+- Debug builds: build/DerivedData/Build/Products/Debug/WiFA.app
+- Release builds: build/WiFA-Universal/WiFA.app (archive removed by default)
+
 ```bash
 ./build.sh
 ```
@@ -60,6 +64,14 @@ Lint/format
 - No lint/format tool is configured in the repo (e.g., SwiftLint/SwiftFormat are not present).
 
 ## Other useful CLI snippets
+
+- Update OUI vendor list into Resources/oui from IEEE registry (requires Python 3):
+
+```bash
+python3 scripts/update_oui.py   # downloads and writes Resources/oui
+# or with a local file:
+python3 scripts/update_oui.py path/to/oui.txt
+```
 
 - Resolve the app’s bundle identifier from the Xcode project:
 

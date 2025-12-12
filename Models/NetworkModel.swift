@@ -1,6 +1,6 @@
 import Foundation
 
-struct NetworkModel: Identifiable {
+struct NetworkModel: Identifiable, Equatable {
     let id = UUID()
     
     // Видимые по умолчанию

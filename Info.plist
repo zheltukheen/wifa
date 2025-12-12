@@ -20,5 +20,10 @@
 	<string>1</string>
 	<key>NSLocationUsageDescription</key>
 	<string>Для отображения информации о BSSID/SSID, требуется доступ к Location Services.</string>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
 </dict>
 </plist>

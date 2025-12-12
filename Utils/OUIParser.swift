@@ -1,7 +1,7 @@
 import Foundation
 
 struct OUIParser {
-    // Базовый вшитый словарь на случай отсутствия внешней базы
+    // Базовый вшитый словарь на случай отсутствия внешней базы (ключи: AABBCC без двоеточий)
     static let builtIn: [String: String] = [
         "00:1A:2B": "Apple",
         "00:1B:63": "Cisco",
@@ -27,29 +27,56 @@ struct OUIParser {
     
     private static var cached: [String: String]? = nil
     
-    /// Ленивая подгрузка базы OUI из `oui.csv` в bundle (формат: `OUI,Vendor`) с fallback на встроенный словарь.
+    /// Ленивая подгрузка базы OUI из bundle. Поддерживаем форматы:
+    /// - "oui" или "oui.txt": строки вида "0023CE<TAB/SPACE>VENDOR NAME"
+    /// - "oui.csv": строки вида "OUI,Vendor"
     private static func db() -> [String: String] {
         if let c = cached { return c }
-        if let url = Bundle.main.url(forResource: "oui", withExtension: "csv"),
-           let text = try? String(contentsOf: url) {
-            var map: [String: String] = [:]
-            for line in text.split(separator: "\n") {
-                let parts = line.split(separator: ",", maxSplits: 1).map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-                if parts.count == 2 {
-                    map[parts[0].uppercased()] = parts[1]
+        let candidates: [(name: String, ext: String?)] = [("oui", nil), ("oui", "txt"), ("oui", "csv"), ("OUI", nil), ("OUI", "txt"), ("OUI", "csv")]
+        for cand in candidates {
+            if let url = Bundle.main.url(forResource: cand.name, withExtension: cand.ext),
+               let text = try? String(contentsOf: url) {
+                var map: [String: String] = [:]
+                for raw in text.split(separator: "\n") {
+                    let line = String(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if line.isEmpty { continue }
+                    if line.hasPrefix("#") || line.hasPrefix("//") { continue }
+                    if line.contains(",") {
+                        // CSV: OUI,Vendor; OUI может быть с двоеточиями или без
+                        let parts = line.split(separator: ",", maxSplits: 1).map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                        if parts.count == 2 {
+                            let key = normalizeOui(parts[0])
+                            if key.count == 6 { map[key] = parts[1] }
+                        }
+                    } else {
+                        // Whitespace-separated: first token OUI (AABBCC), rest is vendor name
+                        if let r = line.rangeOfCharacter(from: .whitespacesAndNewlines) {
+                            let lhs = String(line[..<r.lowerBound])
+                            let rhs = String(line[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                            let key = normalizeOui(lhs)
+                            if !rhs.isEmpty, key.count == 6 { map[key] = rhs }
+                        }
+                    }
                 }
+                cached = map.isEmpty ? builtIn : map
+                return cached!
             }
-            cached = map.isEmpty ? builtIn : map
-            return cached!
         }
         cached = builtIn
         return cached!
     }
     
+    /// Нормализует строку с OUI ("AA:BB:CC" или "AABBCC" → "AABBCC").
+    private static func normalizeOui(_ s: String) -> String {
+        let up = s.uppercased()
+        let cleaned = up.replacingOccurrences(of: ":", with: "").replacingOccurrences(of: "-", with: "")
+        return String(cleaned.prefix(6))
+    }
+    
     static func vendor(for bssid: String) -> String {
         let trimmed = bssid.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "-" }
-        let key = trimmed.uppercased().prefix(8)
-        return db()[String(key)] ?? String(key)
+        let key = normalizeOui(trimmed)
+        return db()[key] ?? "-"
     }
 }
