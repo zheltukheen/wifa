@@ -1,5 +1,66 @@
+//  WiFiTableView.swift
+
 import SwiftUI
 import AppKit
+
+// MARK: - 1. Custom Cell Class (Выделение UI ячейки)
+/// Выносим логику создания UI и констрейнтов из Coordinator.
+/// Это повышает производительность, так как констрейнты создаются 1 раз при инициализации.
+final class WiFiTableCellView: NSTableCellView {
+    static let identifier = NSUserInterfaceItemIdentifier("WiFiTextCell")
+    
+    private let textFieldLabel: NSTextField = {
+        let tf = NSTextField()
+        tf.isEditable = false
+        tf.isBordered = false
+        tf.drawsBackground = false
+        tf.lineBreakMode = .byTruncatingTail
+        tf.translatesAutoresizingMaskIntoConstraints = false
+        return tf
+    }()
+    
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setupUI()
+    }
+    
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupUI()
+    }
+    
+    private func setupUI() {
+        // Добавляем textField
+        addSubview(textFieldLabel)
+        self.textField = textFieldLabel
+        
+        // Static Constraints (Создаются один раз)
+        NSLayoutConstraint.activate([
+            textFieldLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            textFieldLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            textFieldLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4)
+        ])
+    }
+    
+    func configure(text: String, isConnected: Bool) {
+        textFieldLabel.stringValue = text
+        textFieldLabel.toolTip = text
+        
+        if isConnected {
+            textFieldLabel.font = NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)
+            textFieldLabel.textColor = NSColor.systemBlue
+        } else {
+            textFieldLabel.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            textFieldLabel.textColor = NSColor.labelColor
+        }
+    }
+}
+
+// MARK: - 2. Typed Identifiers (Modern AppKit)
+extension NSUserInterfaceItemIdentifier {
+    static let bssid = NSUserInterfaceItemIdentifier("bssid")
+    // Остальные создаются динамически из ID колонок, но базу можно типизировать
+}
 
 struct WiFiTableView: NSViewRepresentable {
     @ObservedObject var viewModel: AnalyzerViewModel
@@ -13,15 +74,12 @@ struct WiFiTableView: NSViewRepresentable {
         
         tableView.delegate = context.coordinator
         tableView.dataSource = context.coordinator
-        tableView.columnAutoresizingStyle = .noColumnAutoresizing
+        tableView.columnAutoresizingStyle = .noColumnAutoresizing // Важно для ручного ресайза
         tableView.allowsColumnReordering = true
         tableView.allowsColumnResizing = true
         tableView.usesAlternatingRowBackgroundColors = true
         
-        // Настройка заголовка
         tableView.headerView = NSTableHeaderView()
-        
-        // Включаем выбор
         tableView.allowsEmptySelection = true
         tableView.allowsMultipleSelection = false
         
@@ -31,31 +89,23 @@ struct WiFiTableView: NSViewRepresentable {
         menu.addItem(NSMenuItem(title: "Копировать BSSID", action: #selector(Coordinator.copyBSSID), keyEquivalent: ""))
         tableView.menu = menu
         
-        // Создаем колонки
-        let sortedColumns = viewModel.columnDefinitions.sorted { $0.order < $1.order }
-        sortedColumns.forEach { colDef in
-            let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(colDef.id))
-            column.title = colDef.title
-            column.isEditable = false
-            column.width = CGFloat(colDef.width)
-            column.isHidden = !colDef.isVisible
-            column.minWidth = 60
-            column.maxWidth = 1000
-            column.sortDescriptorPrototype = NSSortDescriptor(key: colDef.id, ascending: true)
-            tableView.addTableColumn(column)
-        }
-        
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
         
         context.coordinator.tableView = tableView
-        context.coordinator.parent = self
         
+        // Наблюдатели за изменениями пользователем (Reorder / Resize)
         NotificationCenter.default.addObserver(
             context.coordinator,
             selector: #selector(Coordinator.columnDidMove(_:)),
             name: NSTableView.columnDidMoveNotification,
+            object: tableView
+        )
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.columnDidResize(_:)),
+            name: NSTableView.columnDidResizeNotification,
             object: tableView
         )
         
@@ -65,95 +115,108 @@ struct WiFiTableView: NSViewRepresentable {
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let tableView = nsView.documentView as? NSTableView else { return }
         
-        // Сохраняем позицию скролла
-        let clipView = nsView.contentView
-        let oldOrigin = clipView.bounds.origin
+        // --- 3. Умное обновление колонок (Diffing) ---
+        // Сравниваем конфигурацию без генерации длинной строки-сигнатуры.
         
-        let target = viewModel.columnDefinitions.sorted { $0.order < $1.order }
-        // В сигнатуру добавляем кол-во сетей, чтобы перезагружать при добавлении/удалении
-        let signature = target.map { "\($0.id)|\($0.isVisible ? 1 : 0)|\(Int($0.width))|\($0.order)" }.joined(separator: ",") + "|\(viewModel.currentSortKey ?? "")|\(viewModel.isSortAscending)|\(viewModel.signalDisplayMode.rawValue)|\(viewModel.networks.count)"
+        let targetDefinitions = viewModel.columnDefinitions.sorted { $0.order < $1.order }
+        let targetVisibleDefinitions = targetDefinitions.filter { $0.isVisible }
         
-        // --- Логика обновления структуры колонок ---
-        if context.coordinator.lastAppliedColumnsSignature != signature {
-            context.coordinator.isProgrammaticColumnChange = true
-            
-            // 1. Удаление лишних
-            let targetIDs = Set(target.map { $0.id })
-            for column in tableView.tableColumns {
-                if !targetIDs.contains(column.identifier.rawValue) {
-                    tableView.removeTableColumn(column)
-                }
+        // Флаг для блокировки обратных нотификаций во время программного изменения
+        context.coordinator.isProgrammaticUpdate = true
+        
+        // A. Синхронизация списка колонок (Add / Remove)
+        let currentColumnIdentifiers = Set(tableView.tableColumns.map { $0.identifier.rawValue })
+        let targetIdentifiers = Set(targetVisibleDefinitions.map { $0.id })
+        
+        // Remove: Убираем колонки, которых нет в target (или стали скрытыми)
+        let toRemove = currentColumnIdentifiers.subtracting(targetIdentifiers)
+        for id in toRemove {
+            if let col = tableView.tableColumn(withIdentifier: NSUserInterfaceItemIdentifier(id)) {
+                tableView.removeTableColumn(col)
             }
-            
-            // 2. Добавление/Обновление
-            for def in target {
-                let id = NSUserInterfaceItemIdentifier(def.id)
-                if let col = tableView.tableColumn(withIdentifier: id) {
-                    if col.isHidden != !def.isVisible { col.isHidden = !def.isVisible }
-                    if abs(col.width - def.width) > 1.0 { col.width = def.width }
-                    col.title = def.title
-                    col.sortDescriptorPrototype = NSSortDescriptor(key: def.id, ascending: true)
-                } else {
-                    let col = NSTableColumn(identifier: id)
-                    col.title = def.title
-                    col.width = def.width
-                    col.isHidden = !def.isVisible
-                    col.minWidth = 50
-                    col.sortDescriptorPrototype = NSSortDescriptor(key: def.id, ascending: true)
-                    tableView.addTableColumn(col)
-                }
-            }
-            
-            // 3. Порядок
-            for (targetIndex, def) in target.enumerated() {
-                let id = NSUserInterfaceItemIdentifier(def.id)
-                if let currentIndex = tableView.tableColumns.firstIndex(where: { $0.identifier == id }) {
-                    if currentIndex != targetIndex {
-                        tableView.moveColumn(currentIndex, toColumn: targetIndex)
-                    }
-                }
-            }
-            
-            context.coordinator.isProgrammaticColumnChange = false
-            context.coordinator.lastAppliedColumnsSignature = signature
-            
-            // Перезагрузка данных (при смене структуры)
-            tableView.reloadData()
-            context.coordinator.updateSortIndicators()
-        } else {
-            // Если структура не менялась, просто обновляем ячейки
-            // Note: reloadData() необходим для обновления значений (сигнала),
-            // но он сбрасывает выделение, которое мы восстановим ниже.
-            tableView.reloadData()
         }
         
-        // --- СИНХРОНИЗАЦИЯ ВЫДЕЛЕНИЯ (В обе стороны) ---
-        // Это должно выполняться ВСЕГДА после reloadData
-        
-        if let selectedBSSID = viewModel.selectedBSSID {
-            // Если во ViewModel есть выбор, синхронизируем таблицу
-            if let index = viewModel.networks.firstIndex(where: { $0.bssid == selectedBSSID }) {
-                if tableView.selectedRow != index {
-                    tableView.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
-                    tableView.scrollRowToVisible(index) // Опционально: скролл к выбранному
-                }
+        // Add/Update: Добавляем новые или обновляем существующие
+        for def in targetVisibleDefinitions {
+            let id = NSUserInterfaceItemIdentifier(def.id)
+            let column: NSTableColumn
+            
+            if let existing = tableView.tableColumn(withIdentifier: id) {
+                column = existing
             } else {
-                // Сеть пропала из списка (удалили) -> снимаем выделение
-                if tableView.selectedRow >= 0 {
-                    tableView.deselectAll(nil)
-                }
+                column = NSTableColumn(identifier: id)
+                column.minWidth = 50
+                // Добавляем в конец, порядок исправим ниже
+                tableView.addTableColumn(column)
             }
-        } else {
-            // Если во ViewModel пусто, снимаем выделение в таблице
-            if tableView.selectedRow >= 0 {
-                tableView.deselectAll(nil)
+            
+            // Обновляем свойства (только если изменились, чтобы не дергать UI)
+            if column.title != def.title { column.title = def.title }
+            if abs(column.width - def.width) > 1.0 { column.width = def.width }
+            
+            // Сортировка дескриптора
+            if column.sortDescriptorPrototype?.key != def.id {
+                column.sortDescriptorPrototype = NSSortDescriptor(key: def.id, ascending: true)
             }
         }
         
-        // Восстановление скролла (если не скроллили к выбору)
-        if clipView.bounds.origin != oldOrigin {
-            // clipView.scroll(to: oldOrigin) // Можно раскомментировать, если scrollRowToVisible мешает
-            // nsView.reflectScrolledClipView(clipView)
+        // B. Синхронизация порядка (Reorder)
+        // Проходим по целевому списку и перемещаем колонки на нужные позиции
+        let currentColumns = tableView.tableColumns
+        for (targetIndex, def) in targetVisibleDefinitions.enumerated() {
+            let id = NSUserInterfaceItemIdentifier(def.id)
+            // Ищем текущий индекс этой колонки в таблице
+            if let currentIndex = currentColumns.firstIndex(where: { $0.identifier == id }) {
+                if currentIndex != targetIndex {
+                    tableView.moveColumn(currentIndex, toColumn: targetIndex)
+                }
+            }
+        }
+        
+        context.coordinator.isProgrammaticUpdate = false
+        
+        // Обновление индикатора сортировки
+        if let sortKey = viewModel.currentSortKey {
+            let descriptor = NSSortDescriptor(key: sortKey, ascending: viewModel.isSortAscending)
+            if tableView.sortDescriptors.first != descriptor {
+                tableView.sortDescriptors = [descriptor]
+            }
+        }
+        
+        // Перезагрузка данных (Сигнал, новые сети)
+        // reloadData сбрасывает выделение, поэтому восстанавливаем его ниже
+        tableView.reloadData()
+        
+        // --- 4. Безопасная синхронизация выделения (Safe Selection Sync) ---
+        restoreSelection(in: tableView, coordinator: context.coordinator)
+    }
+    
+    /// Восстановление выделения по BSSID (Улучшение UX)
+    private func restoreSelection(in tableView: NSTableView, coordinator: Coordinator) {
+        guard let selectedBSSID = viewModel.selectedBSSID else {
+            if tableView.selectedRow >= 0 {
+                coordinator.isUpdatingSelection = true
+                tableView.deselectAll(nil)
+                coordinator.isUpdatingSelection = false
+            }
+            return
+        }
+        
+        // Находим индекс строки для сохраненного BSSID
+        if let index = viewModel.networks.firstIndex(where: { $0.bssid == selectedBSSID }) {
+            if tableView.selectedRow != index {
+                coordinator.isUpdatingSelection = true // Блокируем цикл обновлений
+                tableView.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
+                tableView.scrollRowToVisible(index) // Скроллим к выбранному
+                coordinator.isUpdatingSelection = false
+            }
+        } else {
+            // Сеть исчезла (фильтр или выход из зоны), снимаем выделение
+            if tableView.selectedRow >= 0 {
+                coordinator.isUpdatingSelection = true
+                tableView.deselectAll(nil)
+                coordinator.isUpdatingSelection = false
+            }
         }
     }
     
@@ -161,11 +224,15 @@ struct WiFiTableView: NSViewRepresentable {
         Coordinator(self)
     }
     
+    // MARK: - Coordinator
+    @MainActor
     class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         var parent: WiFiTableView
         weak var tableView: NSTableView?
-        var isProgrammaticColumnChange = false
-        var lastAppliedColumnsSignature: String?
+        
+        // Флаги для разрыва циклов обновлений
+        var isProgrammaticUpdate = false
+        var isUpdatingSelection = false
         
         private static let dateFormatter: DateFormatter = {
             let f = DateFormatter(); f.dateStyle = .short; f.timeStyle = .medium; return f
@@ -175,98 +242,119 @@ struct WiFiTableView: NSViewRepresentable {
             self.parent = parent
         }
         
+        // MARK: DataSource
         func numberOfRows(in tableView: NSTableView) -> Int {
             parent.viewModel.networks.count
         }
         
-        // MARK: - View For Cell (Исправлено выравнивание)
+        // MARK: View For Column (Правильный Reuse)
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
             guard let column = tableColumn, row < parent.viewModel.networks.count else { return nil }
+            
             let network = parent.viewModel.networks[row]
-            let id = column.identifier.rawValue
+            let colId = column.identifier.rawValue
             
-            let isConnected = (network.bssid == parent.viewModel.currentConnectedBSSID)
-            let cellIdentifier = NSUserInterfaceItemIdentifier(id)
+            // 1. Получаем типизированную ячейку через Identifier
+            var cellView = tableView.makeView(withIdentifier: WiFiTableCellView.identifier, owner: self) as? WiFiTableCellView
             
-            // 1. Создаем или переиспользуем NSTableCellView (контейнер)
-            var cellView = tableView.makeView(withIdentifier: cellIdentifier, owner: self) as? NSTableCellView
-            
+            // 2. Если нет в пуле реюза, создаем новую (логика init внутри класса ячейки)
             if cellView == nil {
-                cellView = NSTableCellView()
-                cellView?.identifier = cellIdentifier
-                
-                // 2. Создаем NSTextField
-                let textField = NSTextField()
-                textField.isEditable = false
-                textField.isBordered = false
-                textField.drawsBackground = false
-                textField.identifier = NSUserInterfaceItemIdentifier("TextCell")
-                textField.translatesAutoresizingMaskIntoConstraints = false
-                
-                cellView?.addSubview(textField)
-                cellView?.textField = textField
-                
-                // 3. Добавляем Constraints для центрирования по вертикали
-                NSLayoutConstraint.activate([
-                    textField.centerYAnchor.constraint(equalTo: cellView!.centerYAnchor),
-                    textField.leadingAnchor.constraint(equalTo: cellView!.leadingAnchor, constant: 2),
-                    textField.trailingAnchor.constraint(equalTo: cellView!.trailingAnchor, constant: -2)
-                ])
+                cellView = WiFiTableCellView()
+                cellView?.identifier = WiFiTableCellView.identifier
             }
             
-            // 4. Наполняем данными
-            if let textField = cellView?.textField {
-                textField.stringValue = getText(for: id, network: network)
-                textField.toolTip = textField.stringValue
-                
-                if isConnected {
-                    textField.font = NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)
-                    textField.textColor = NSColor.systemBlue
-                } else {
-                    textField.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
-                    textField.textColor = NSColor.labelColor
-                }
-            }
+            // 3. Конфигурируем (данные + стиль)
+            let text = getText(for: colId, network: network)
+            let isConnected = (network.bssid == parent.viewModel.currentConnectedBSSID)
+            
+            cellView?.configure(text: text, isConnected: isConnected)
             
             return cellView
         }
         
         // MARK: - Selection Handling
-        func tableViewSelectionDidChange(_ notification: Notification) {
-            guard let tableView = notification.object as? NSTableView else { return }
-            let row = tableView.selectedRow
-            
-            // Обновляем ViewModel асинхронно, чтобы не блокировать UI
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                
-                if row >= 0, row < self.parent.viewModel.networks.count {
-                    let net = self.parent.viewModel.networks[row]
-                    // Только если реально изменилось
-                    if self.parent.viewModel.selectedBSSID != net.bssid {
-                        self.parent.viewModel.selectedBSSID = net.bssid
-                    }
-                } else {
-                    // Если сняли выделение (cmd+click)
-                    if self.parent.viewModel.selectedBSSID != nil {
-                        self.parent.viewModel.selectedBSSID = nil
-                    }
-                }
-            }
+         func tableViewSelectionDidChange(_ notification: Notification) {
+             guard !isUpdatingSelection, let tableView = notification.object as? NSTableView else { return }
+             
+             let row = tableView.selectedRow
+             
+             // ВАЖНО: Выносим обновление ViewModel из цикла отрисовки
+             DispatchQueue.main.async { [weak self] in
+                 guard let self = self else { return }
+                 
+                 if row >= 0, row < self.parent.viewModel.networks.count {
+                     let net = self.parent.viewModel.networks[row]
+                     // Проверка на изменение, чтобы не спамить обновлениями
+                     if self.parent.viewModel.selectedBSSID != net.bssid {
+                         self.parent.viewModel.selectedBSSID = net.bssid
+                     }
+                 } else {
+                     if self.parent.viewModel.selectedBSSID != nil {
+                         self.parent.viewModel.selectedBSSID = nil
+                     }
+                 }
+             }
+         }
+        
+        // MARK: Sorting
+        func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+            guard let sd = tableView.sortDescriptors.first, let key = sd.key else { return }
+            parent.viewModel.sort(by: key, ascending: sd.ascending)
+            // reloadData вызовется в updateNSView при обновлении state viewModel
         }
         
+        // MARK: - Column Sync
+                @objc func columnDidMove(_ notification: Notification) {
+                    guard !isProgrammaticUpdate, let tableView = notification.object as? NSTableView else { return }
+                    
+                    // Собираем данные синхронно
+                    let newOrderMap = tableView.tableColumns.enumerated().map { (offset, col) in
+                        (id: col.identifier.rawValue, index: offset)
+                    }
+                    
+                    // Обновляем ViewModel асинхронно
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self = self else { return }
+                        for item in newOrderMap {
+                            if let idx = self.parent.viewModel.columnDefinitions.firstIndex(where: { $0.id == item.id }) {
+                                self.parent.viewModel.columnDefinitions[idx].order = item.index
+                            }
+                        }
+                        self.parent.viewModel.saveColumnSettings()
+                    }
+                }
+                
+                @objc func columnDidResize(_ notification: Notification) {
+                    guard !isProgrammaticUpdate, let col = notification.userInfo?["NSTableColumn"] as? NSTableColumn else { return }
+                    
+                    let id = col.identifier.rawValue
+                    let width = col.width
+                    
+                    // Обновляем ViewModel асинхронно
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self = self else { return }
+                        if let idx = self.parent.viewModel.columnDefinitions.firstIndex(where: { $0.id == id }) {
+                            self.parent.viewModel.columnDefinitions[idx].width = width
+                            self.parent.viewModel.saveColumnSettings()
+                        }
+                    }
+                }
+        
+        // MARK: Helpers & Menu
         @objc func copySSID() {
-            guard let row = tableView?.clickedRow, row >= 0 else { return }
-            let net = parent.viewModel.networks[row]
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(net.ssid, forType: .string)
+            copyToClipboard(keyPath: \.ssid)
         }
         
         @objc func copyBSSID() {
+            copyToClipboard(keyPath: \.bssid)
+        }
+        
+        private func copyToClipboard(keyPath: KeyPath<NetworkModel, String>) {
             guard let row = tableView?.clickedRow, row >= 0 else { return }
             let net = parent.viewModel.networks[row]
+            let string = net[keyPath: keyPath]
             NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(net.bssid, forType: .string)
+            NSPasteboard.general.setString(string, forType: .string)
         }
         
         private func getText(for identifier: String, network: NetworkModel) -> String {
@@ -287,52 +375,6 @@ struct WiFiTableView: NSViewRepresentable {
             case "wps": return network.wps ?? "-"
             default: return "-"
             }
-        }
-        
-        func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
-            guard let sd = tableView.sortDescriptors.first, let key = sd.key else { return }
-            parent.viewModel.sort(by: key, ascending: sd.ascending)
-            tableView.reloadData()
-        }
-        
-        @MainActor func updateSortIndicators() {
-            guard let tableView = tableView, let key = parent.viewModel.currentSortKey else { return }
-            let descriptor = NSSortDescriptor(key: key, ascending: parent.viewModel.isSortAscending)
-            if tableView.sortDescriptors.first?.key != key || tableView.sortDescriptors.first?.ascending != parent.viewModel.isSortAscending {
-                tableView.sortDescriptors = [descriptor]
-            }
-        }
-        
-        @objc func columnDidMove(_ notification: Notification) {
-            guard !isProgrammaticColumnChange, let tableView = notification.object as? NSTableView else { return }
-            let newOrder = tableView.tableColumns.enumerated().map { ($0.element.identifier.rawValue, $0.offset) }
-            Task { @MainActor in
-                for (id, idx) in newOrder {
-                    if let modelIdx = parent.viewModel.columnDefinitions.firstIndex(where: { $0.id == id }) {
-                        parent.viewModel.columnDefinitions[modelIdx].order = idx
-                    }
-                }
-                parent.viewModel.saveColumnSettings()
-                self.forceUpdateSignature()
-            }
-        }
-        
-        func tableViewColumnDidResize(_ notification: Notification) {
-            guard !isProgrammaticColumnChange, let col = notification.userInfo?["NSTableColumn"] as? NSTableColumn else { return }
-            let id = col.identifier.rawValue
-            let width = col.width
-            Task { @MainActor in
-                if let idx = parent.viewModel.columnDefinitions.firstIndex(where: { $0.id == id }) {
-                    parent.viewModel.columnDefinitions[idx].width = width
-                    parent.viewModel.saveColumnSettings()
-                    self.forceUpdateSignature()
-                }
-            }
-        }
-        
-        @MainActor private func forceUpdateSignature() {
-            let target = parent.viewModel.columnDefinitions.sorted { $0.order < $1.order }
-            self.lastAppliedColumnsSignature = target.map { "\($0.id)|\($0.isVisible ? 1 : 0)|\(Int($0.width))|\($0.order)" }.joined(separator: ",") + "|\(parent.viewModel.currentSortKey ?? "")|\(parent.viewModel.isSortAscending)|\(parent.viewModel.signalDisplayMode.rawValue)|\(parent.viewModel.networks.count)"
         }
     }
 }
