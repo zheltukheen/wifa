@@ -52,6 +52,7 @@ struct ColumnDefinition: Identifiable, Codable {
         .init(id: SortOption.bssid.rawValue, title: "BSSID", width: 130, isVisible: true, order: 1),
         .init(id: SortOption.signal.rawValue, title: "Signal", width: 60, isVisible: true, order: 2),
         .init(id: SortOption.channel.rawValue, title: "Ch", width: 50, isVisible: true, order: 3),
+        .init(id: SortOption.channel.rawValue, title: "Ch", width: 50, isVisible: true, order: 3),
         .init(id: SortOption.width.rawValue, title: "Width", width: 60, isVisible: true, order: 4),
         .init(id: SortOption.band.rawValue, title: "Band", width: 60, isVisible: true, order: 5),
         .init(id: SortOption.security.rawValue, title: "Security", width: 110, isVisible: true, order: 6),
@@ -81,6 +82,29 @@ class AnalyzerViewModel: ObservableObject {
     private var timer: Timer?
     private var cancellables = Set<AnyCancellable>()
     private var isScanning = false
+    
+    // MARK: - Color Logic
+    
+    /// Глобальный генератор цвета для сети, чтобы во всех графах он был одинаковым
+    func colorFor(bssid: String) -> Color {
+        // Используем простой хэш для детерминированного цвета
+        let hash = bssid.hashValue
+        // hue: 0.0 ... 1.0
+        let hue = Double(abs(hash) % 1000) / 1000.0
+        // Высокая яркость и насыщенность для темного фона
+        return Color(hue: hue, saturation: 0.85, brightness: 1.0)
+    }
+    
+
+        // MARK: - Helpers
+        
+        /// Конвертация dBm в проценты (0% = -100dBm, 100% = -50dBm)
+        func convertToPercent(_ dbm: Int) -> Double {
+            let val = Double(dbm)
+            if val <= -100 { return 0 }
+            if val >= -50 { return 100 }
+            return (val + 100) * 2
+        }
     
     // MARK: - Published Properties (UI Binding)
     @Published var networks: [NetworkModel] = []
@@ -404,3 +428,4 @@ class AnalyzerViewModel: ObservableObject {
         }
     }
 }
+
