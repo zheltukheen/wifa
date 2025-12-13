@@ -291,7 +291,7 @@ struct ToolbarView: View {
                         .frame(width: 36, height: 28)
                 }
                 .menuStyle(.borderlessButton)
-                .frame(width: 36, height: 28)
+                .frame(width: 50, height: 28)
                 .background(Color(nsColor: .controlBackgroundColor))
                 .cornerRadius(6)
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2), lineWidth: 1))
@@ -397,11 +397,11 @@ struct NetworkInspectorView: View {
             
             ScrollView {
                 if let network = viewModel.selectedNetwork {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
                         
                         // Header
                         HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: 6) {
                                 Text(network.ssid.isEmpty ? "<Hidden>" : network.ssid)
                                     .font(.title2).bold()
                                     .foregroundColor(network.bssid == viewModel.currentConnectedBSSID ? .accentColor : .primary)
@@ -446,12 +446,13 @@ struct NetworkInspectorView: View {
                                 // Безопасное разворачивание
                                 DetailRow(label: "Streams", value: network.streams.map { "\($0)" } ?? "-")
                             }
-                            .padding(.vertical, 4)
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 10)
                         }
                         
                         // Security
                         GroupBox("Security & Advanced") {
-                            VStack(alignment: .leading, spacing: 8) {
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 12) {
                                 DetailRow(label: "Protocol", value: network.security)
                                 DetailRow(label: "Protection Mode", value: network.protectionMode ?? "Unknown")
                                 DetailRow(label: "WPS", value: network.wps ?? "N/A")
@@ -461,7 +462,8 @@ struct NetworkInspectorView: View {
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, 4)
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 10)
                         }
                         
                         // Timestamps
@@ -471,6 +473,8 @@ struct NetworkInspectorView: View {
                                 DetailRow(label: "Last Seen", value: formatDate(network.lastSeen))
                                 DetailRow(label: "Seen Ago", value: "\(network.seen) sec")
                             }
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 10)
                         }
                         
                     }
