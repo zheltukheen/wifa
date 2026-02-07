@@ -28,10 +28,31 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
           shasum -a 256 "$ZIP_PATH" | awk '{print $1}' > "build/WiFA-${VERSION}.sha256"
 
+      - name: Generate Release Notes from CHANGELOG
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v ver="$VERSION" '
+            $0 ~ "^## "ver"($|[[:space:]]|[[:space:]]—)" { in=1; next }
+            in && /^## / { exit }
+            in { print }
+          ' CHANGELOG.md > /tmp/changelog_section.txt
+
+          if [ ! -s /tmp/changelog_section.txt ]; then
+            echo "CHANGELOG section for version ${VERSION} not found."
+            exit 1
+          fi
+
+          {
+            echo "## WiFA ${VERSION}"
+            echo ""
+            cat /tmp/changelog_section.txt
+          } > release_notes.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          generate_release_notes: false
+          body_path: release_notes.md
           files: |
             build/WiFA-*.zip
             build/WiFA-*.sha256
