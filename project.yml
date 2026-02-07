@@ -19,6 +19,8 @@ targets:
       - ViewModels
       - Views
       - Utils
+    resources:
+      - Resources
     info:
       path: Info.plist
       properties:

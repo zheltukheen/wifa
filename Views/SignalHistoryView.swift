@@ -20,9 +20,9 @@ struct SignalHistoryView: View {
         let isPercent = viewModel.signalDisplayMode == .percent
         
         // 1. Вычисляем пределы по оси X
-        let maxDataPoints = viewModel.signalHistory.values.map { $0.count }.max() ?? 60
+        let maxDataPoints = max(1, viewModel.signalHistory.values.map { $0.count }.max() ?? 1)
         // Добавляем 15% справа для подписей
-        let xDomainMax = Int(Double(maxDataPoints) * 1.15)
+        let xDomainMax = max(1, Int(Double(maxDataPoints) * 1.15))
         
         let minDomain = isPercent ? 0.0 : minDbm
         let maxDomain = isPercent ? 100.0 : maxDbm
@@ -32,10 +32,10 @@ struct SignalHistoryView: View {
             // 1. ГРАФИКИ СЕТЕЙ
             // ---------------------------
             ForEach(viewModel.networks) { network in
-                if let history = viewModel.signalHistory[network.bssid], !history.isEmpty {
+                if let history = viewModel.signalHistory[network.id], !history.isEmpty {
                     
-                    let isSelected = (viewModel.selectedBSSID == network.bssid)
-                    let color = viewModel.colorFor(bssid: network.bssid)
+                    let isSelected = (viewModel.selectedNetworkId == network.id)
+                    let color = viewModel.colorFor(networkId: network.id)
                     
                     // Рисуем линию и заливку
                     ForEach(Array(history.enumerated()), id: \.offset) { index, signal in
@@ -43,7 +43,7 @@ struct SignalHistoryView: View {
                             x: .value("Time", index),
                             y: .value("Signal", isPercent ? viewModel.convertToPercent(signal) : Double(signal)),
                             yBase: .value("Base", minDomain),
-                            traceID: network.bssid, // ID сети для правильного цвета линий
+                            traceID: network.id, // ID сети для правильного цвета линий
                             color: color,
                             isSelected: isSelected,
                             interpolation: .stepEnd
@@ -58,7 +58,7 @@ struct SignalHistoryView: View {
                         )
                         .symbolSize(0)
                         .annotation(position: .leading, alignment: .leading, spacing: 4) {
-                            Text(network.ssid.isEmpty ? network.bssid : network.ssid)
+                            Text(network.displayName)
                                 .font(.caption2)
                                 .fontWeight(isSelected ? .bold : .regular)
                                 .foregroundColor(isSelected ? color : .gray)
@@ -78,6 +78,11 @@ struct SignalHistoryView: View {
         .chartYScale(domain: minDomain...maxDomain)
         .chartXScale(domain: 0...xDomainMax)
         .chartXAxis(.hidden)
+        .chartPlotStyle { plot in
+            plot
+                .padding(.top, 12)
+                .padding(.bottom, 4)
+        }
         .chartYAxis {
             if isPercent {
                 AxisMarks(position: .leading, values: [0, 25, 50, 75, 100]) { value in
@@ -112,7 +117,7 @@ struct SignalHistoryView: View {
                     .onContinuousHover { phase in
                         switch phase {
                         case .active(let location):
-                            updateCursor(at: location, proxy: proxy)
+                            updateCursor(at: location, proxy: proxy, maxDataPoints: maxDataPoints)
                         case .ended:
                             self.hoverLocation = nil
                             self.hoverIndex = nil
@@ -121,17 +126,18 @@ struct SignalHistoryView: View {
                     .gesture(
                         DragGesture(minimumDistance: 0)
                             .onChanged { value in
-                                updateCursor(at: value.location, proxy: proxy)
+                                updateCursor(at: value.location, proxy: proxy, maxDataPoints: maxDataPoints)
                             }
                             .onEnded { value in
-                                handleClick(at: value.location, proxy: proxy)
+                                handleClick(at: value.location, proxy: proxy, maxDataPoints: maxDataPoints)
                             }
                     )
             }
         }
-        .padding(.vertical)
-        .padding(.leading)
-        .padding(.trailing, 2)
+        .padding(.top, 16)
+        .padding(.bottom, 10)
+        .padding(.leading, 12)
+        .padding(.trailing, 16)
         .background(Color.black.opacity(0.9))
     }
     
@@ -144,7 +150,7 @@ struct SignalHistoryView: View {
                 .foregroundStyle(Color.white.opacity(0.5))
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
                 .annotation(position: .top, alignment: .center) {
-                    let secondsAgo = Int(viewModel.refreshInterval) * (maxDataPoints - 1 - idx)
+                    let secondsAgo = Int((Double(maxDataPoints - 1 - idx) * viewModel.refreshInterval).rounded())
                     Text(formatTimeAgo(seconds: secondsAgo))
                         .font(.caption2)
                         .padding(4)
@@ -153,14 +159,14 @@ struct SignalHistoryView: View {
                         .foregroundColor(.white)
                 }
             
-            if let selectedBSSID = viewModel.selectedBSSID,
-               let history = viewModel.signalHistory[selectedBSSID],
+            if let selectedId = viewModel.selectedNetworkId,
+               let history = viewModel.signalHistory[selectedId],
                idx >= 0 && idx < history.count {
                 
                 let signal = history[idx]
                 let val = isPercent ? viewModel.convertToPercent(signal) : Double(signal)
                 let label = isPercent ? "\(Int(val))%" : "\(signal) dBm"
-                let color = viewModel.colorFor(bssid: selectedBSSID)
+                let color = viewModel.colorFor(networkId: selectedId)
                 
                 PointMark(
                     x: .value("Cursor", idx),
@@ -187,16 +193,18 @@ struct SignalHistoryView: View {
     
     // MARK: - Interaction Logic
     
-    private func updateCursor(at location: CGPoint, proxy: ChartProxy) {
+    private func updateCursor(at location: CGPoint, proxy: ChartProxy, maxDataPoints: Int) {
         guard let index = proxy.value(atX: location.x, as: Int.self) else { return }
+        let clamped = max(0, min(maxDataPoints - 1, index))
         self.hoverLocation = location
-        self.hoverIndex = index
+        self.hoverIndex = clamped
     }
     
-    private func handleClick(at location: CGPoint, proxy: ChartProxy) {
+    private func handleClick(at location: CGPoint, proxy: ChartProxy, maxDataPoints: Int) {
         guard let index = proxy.value(atX: location.x, as: Int.self) else { return }
+        let clamped = max(0, min(maxDataPoints - 1, index))
         self.hoverLocation = location
-        self.hoverIndex = index
+        self.hoverIndex = clamped
         
         guard let cursorYValue = proxy.value(atY: location.y, as: Double.self) else { return }
         
@@ -206,24 +214,24 @@ struct SignalHistoryView: View {
         let tolerance = isPercent ? 20.0 : 15.0 // Зона чувствительности клика
         
         for network in viewModel.networks {
-            if let history = viewModel.signalHistory[network.bssid],
-               index >= 0, index < history.count {
+            if let history = viewModel.signalHistory[network.id],
+               clamped >= 0, clamped < history.count {
                 
-                let rawSignal = history[index]
+                let rawSignal = history[clamped]
                 let plotValue = isPercent ? viewModel.convertToPercent(rawSignal) : Double(rawSignal)
                 let diff = abs(cursorYValue - plotValue)
                 
                 // Если кликнули близко к линии
                 if diff < minDiff && diff < tolerance {
                     minDiff = diff
-                    bestMatch = network.bssid
+                    bestMatch = network.id
                 }
             }
         }
         
         // ИЗМЕНЕНИЕ: Просто присваиваем bestMatch.
         // Если bestMatch == nil (клик в пустоту), то выделение сбросится.
-        viewModel.selectedBSSID = bestMatch
+        viewModel.selectedNetworkId = bestMatch
     }
     
     private func formatTimeAgo(seconds: Int) -> String {

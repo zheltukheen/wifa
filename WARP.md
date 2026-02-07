@@ -102,7 +102,7 @@ State and view model
 
 - AnalyzerViewModel (MainActor, ObservableObject) owns the app state: the list of networks, error messages, column definitions (visibility, width, order), refresh interval, and sort state.
 - Periodic refresh is driven by a Timer (default 2s) that triggers WiFi scans when Location Services are authorized. Sorting is applied on receipt of new scan results.
-- User preferences persist to UserDefaults with keys: ColumnOrder, ColumnVisibility, ColumnWidths, RefreshIntervalSeconds. These drive table reconstruction without recreating columns unnecessarily.
+- User preferences persist to UserDefaults with keys: `WifiColumns_v2` (column order/visibility/widths) and `RefreshIntervalSeconds`.
 
 Table implementation (AppKit bridge)
 
@@ -112,10 +112,11 @@ Table implementation (AppKit bridge)
 
 Scanning and data model
 
-- WiFiScanner (Services) uses CoreWLAN (CWWiFiClient/CWNetwork) to scan, augmenting CWNetwork with additional properties accessed via a combination of Swift Mirror and Objective‑C runtime IMP calls.
-  - Primitive returns (e.g., Int, Double, Bool) are accessed with typed IMP signatures to avoid interpreting primitives as object pointers.
-  - Per‑BSSID firstSeen/lastSeen timestamps are cached to compute seen (seconds since last observation).
-  - Additional derived fields include centerFrequency from channel + band, SNR from RSSI − noise, generation from channel number, and a fallback maxRate from generation × channel width.
+- WiFiScanner (Services) uses only public CoreWLAN APIs (CWWiFiClient/CWNetwork) to scan and build NetworkModel.
+  - No runtime reflection or private parsing; fields are derived from official properties like SSID/BSSID, RSSI, noise, channel, band/width, beacon interval, country code, and IBSS.
+  - Security and generation are inferred via `supportsSecurity` and `supportsPHYMode`.
+  - A stable network id is computed from BSSID when available, with a safe fallback (SSID/band/channel/width/security) when Location Services are off.
+  - firstSeen/lastSeen timestamps are maintained in AnalyzerViewModel to compute `seen`.
 - OUIParser maps the BSSID prefix (OUI) to a vendor name via a small in-repo dictionary.
 - NetworkModel aggregates both primary and advanced fields (e.g., basicRates, beaconInterval, channelUtilization, protectionMode, streams, wps) so the UI can selectively expose them.
 
@@ -123,10 +124,10 @@ Data flow
 
 1. User opens app → WifiAnalyzerApp instantiates AnalyzerViewModel and shows MainTableView.
 2. AnalyzerViewModel requests Location Services via LocationManager; if authorized, starts periodic Timer.
-3. On each tick → WiFiScanner.scan() queries CoreWLAN and constructs [NetworkModel] with derived fields and cached first/last seen.
+3. On each tick → WiFiScanner.scan() queries CoreWLAN and constructs [NetworkModel].
 4. Back on MainActor, AnalyzerViewModel updates networks, applies current sort, and sets/clears error messages.
 5. WiFiTableView reads columnDefinitions to render columns, diffs columns on updates, and reflects sort state via Coordinator.
-6. User column moves/toggles update columnDefinitions → persisted to UserDefaults (ColumnOrder/ColumnVisibility/ColumnWidths).
+6. User column moves/toggles update columnDefinitions → persisted to UserDefaults (`WifiColumns_v2`).
 
 Permissions and requirements
 
@@ -140,7 +141,7 @@ To add a new column that participates in sorting and persistence:
 
 1. Add the property to `Models/NetworkModel.swift`.
 2. Populate it in `Services/WiFiScanner.swift` when constructing `NetworkModel`.
-3. Register the column in `ViewModels/AnalyzerViewModel.swift` under `defaultColumnsConfig` with a stable id, title, default visibility, and width.
+3. Register the column in `ViewModels/AnalyzerViewModel.swift` under `ColumnDefinition.defaults` with a stable id, title, default visibility, and width.
 4. Render the value in `Views/WiFiTableView.swift` inside `Coordinator.tableView(_:viewFor:row:)` by handling the id in the `switch`.
 5. Make it sortable by adding a `case` to `AnalyzerViewModel.sort(by:ascending:)` that compares the new field. The `NSTableColumn` sort descriptor is already created from the id.
 6. Sorting UI indicators are kept in sync by `Coordinator.updateSortIndicators()`.
@@ -148,4 +149,4 @@ To add a new column that participates in sorting and persistence:
 ## Notes for future agents
 
 - The Xcode project is WiFA.xcodeproj with scheme WiFA. The provided build.sh archives a universal Release build and copies the .app into build/WiFA-Universal/.
-- Because WiFiScanner relies on private/semiprivate CoreWLAN details via runtime reflection, property availability can vary across macOS versions; the implementation already guards many lookups and falls back where needed.
+- WiFiScanner intentionally avoids private CoreWLAN reflection to improve long-term stability across macOS releases.

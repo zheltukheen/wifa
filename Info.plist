@@ -15,9 +15,11 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>1.2.0</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>7</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 WiFA Contributors</string>
 	<key>NSLocationUsageDescription</key>
 	<string>Для отображения информации о BSSID/SSID, требуется доступ к Location Services.</string>
 	<key>UISupportedInterfaceOrientations~ipad</key>

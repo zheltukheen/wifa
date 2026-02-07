@@ -7,11 +7,10 @@ import AppKit
 
 struct MainTableView: View {
     @ObservedObject var viewModel: AnalyzerViewModel
+    @EnvironmentObject var uiState: AppUIState
     
     // UI State
-    @State private var showInspector = true
-    @State private var customIntervalText = ""
-    @State private var showingCustomIntervalAlert = false
+    @State private var isResizingPanels = false
     
     // Resizable Panels State
     @State private var inspectorBaseWidth: CGFloat = 300
@@ -20,7 +19,6 @@ struct MainTableView: View {
     // Высота нижней панели (увеличена по умолчанию)
     @State private var bottomPanelBaseHeight: CGFloat = 350
     @State private var bottomPanelDragOffset: CGFloat = 0
-    @State private var selectedBottomTab: Int = 0
     
     // Вычисляемые размеры с ограничениями (min/max)
     var currentInspectorWidth: CGFloat {
@@ -30,6 +28,8 @@ struct MainTableView: View {
     var currentBottomPanelHeight: CGFloat {
         max(150, min(600, bottomPanelBaseHeight - bottomPanelDragOffset))
     }
+
+    private let sidebarWidth: CGFloat = 260
     
     var body: some View {
         VStack(spacing: 0) {
@@ -37,9 +37,10 @@ struct MainTableView: View {
             // 1. TOOLBAR
             ToolbarView(
                 viewModel: viewModel,
-                showInspector: $showInspector,
-                customIntervalText: $customIntervalText,
-                showingCustomIntervalAlert: $showingCustomIntervalAlert
+                showSidebar: $uiState.showSidebar,
+                showInspector: $uiState.showInspector,
+                customIntervalText: $uiState.customIntervalText,
+                showingCustomIntervalAlert: $uiState.showingCustomIntervalAlert
             )
             
             // 2. CONTENT AREA
@@ -49,7 +50,17 @@ struct MainTableView: View {
                     
                     // A. TOP SECTION: Table + Inspector
                     HStack(spacing: 0) {
-                        
+                        if uiState.showSidebar {
+                            SidebarFilterView(viewModel: viewModel)
+                                .frame(width: sidebarWidth)
+                                .background(Material.regularMaterial)
+                                .transition(.move(edge: .leading))
+                            
+                            Rectangle()
+                                .fill(Color(nsColor: .separatorColor))
+                                .frame(width: 1)
+                        }
+
                         // Table Area
                         VStack(spacing: 0) {
                             if let err = viewModel.errorMessage {
@@ -61,7 +72,7 @@ struct MainTableView: View {
                         }
                         
                         // Inspector Area
-                        if showInspector {
+                        if uiState.showInspector {
                             // Вертикальный разделитель (Resizer)
                             Rectangle()
                                 .fill(Color(nsColor: .separatorColor))
@@ -75,10 +86,14 @@ struct MainTableView: View {
                                 )
                                 .gesture(
                                     DragGesture()
-                                        .onChanged { value in self.inspectorDragOffset = value.translation.width }
+                                        .onChanged { value in
+                                            if !isResizingPanels { isResizingPanels = true }
+                                            self.inspectorDragOffset = value.translation.width
+                                        }
                                         .onEnded { _ in
                                             self.inspectorBaseWidth = self.currentInspectorWidth
                                             self.inspectorDragOffset = 0
+                                            self.isResizingPanels = false
                                         }
                                 )
                                 .zIndex(10)
@@ -107,11 +122,13 @@ struct MainTableView: View {
                             DragGesture()
                                 .onChanged { value in
                                     // Тянем вверх -> увеличиваем высоту (инверсия Y)
+                                    if !isResizingPanels { isResizingPanels = true }
                                     self.bottomPanelDragOffset = value.translation.height
                                 }
                                 .onEnded { _ in
                                     self.bottomPanelBaseHeight = self.currentBottomPanelHeight
                                     self.bottomPanelDragOffset = 0
+                                    self.isResizingPanels = false
                                 }
                         )
                         .zIndex(20)
@@ -119,8 +136,8 @@ struct MainTableView: View {
                     // Bottom Container
                     VStack(spacing: 0) {
                         
-                        // Меню вкладок (Спектр / История) - Центрированное
-                        BottomPanelTabs(selectedTab: $selectedBottomTab)
+                        // Centered tabs (Spectrum / History / Raw Data)
+                        BottomPanelTabs(selectedTab: $uiState.selectedBottomTab)
                         
                         Divider()
                         
@@ -128,10 +145,12 @@ struct MainTableView: View {
                         ZStack {
                             Color(nsColor: .controlBackgroundColor).edgesIgnoringSafeArea(.all)
                             
-                            if selectedBottomTab == 0 {
+                            if uiState.selectedBottomTab == 0 {
                                 SpectrumView(viewModel: viewModel)
-                            } else {
+                            } else if uiState.selectedBottomTab == 1 {
                                 SignalHistoryView(viewModel: viewModel)
+                            } else {
+                                RawDataView(viewModel: viewModel)
                             }
                         }
                         .clipped()
@@ -141,16 +160,21 @@ struct MainTableView: View {
             }
         }
         // Алерт для ввода кастомного интервала
-        .alert("Custom Interval", isPresented: $showingCustomIntervalAlert) {
-            TextField("Seconds", text: $customIntervalText)
+        .alert("Custom Interval", isPresented: $uiState.showingCustomIntervalAlert) {
+            TextField("Seconds", text: $uiState.customIntervalText)
             Button("OK") {
-                if let val = Double(customIntervalText), val > 0 {
+                if let val = Double(uiState.customIntervalText), val > 0 {
                     viewModel.updateRefreshInterval(to: val)
                 }
             }
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("Enter refresh interval in seconds:")
+        }
+        .transaction { transaction in
+            if isResizingPanels {
+                transaction.disablesAnimations = true
+            }
         }
         // Запрос прав при появлении
         .onAppear {
@@ -173,7 +197,7 @@ struct BottomPanelTabs: View {
             Spacer()
             
             TabButton(
-                title: "Спектр",
+                title: "Spectrum",
                 icon: "waveform.path.ecg",
                 isSelected: selectedTab == 0,
                 action: { selectedTab = 0 }
@@ -182,10 +206,19 @@ struct BottomPanelTabs: View {
             Divider().frame(height: 16)
             
             TabButton(
-                title: "История",
+                title: "History",
                 icon: "clock.arrow.circlepath",
                 isSelected: selectedTab == 1,
                 action: { selectedTab = 1 }
+            )
+
+            Divider().frame(height: 16)
+
+            TabButton(
+                title: "Raw Data",
+                icon: "list.bullet.rectangle",
+                isSelected: selectedTab == 2,
+                action: { selectedTab = 2 }
             )
             
             // Spacer справа для центрирования
@@ -222,6 +255,7 @@ struct TabButton: View {
 /// Тулбар с унифицированными кнопками настроек
 struct ToolbarView: View {
     @ObservedObject var viewModel: AnalyzerViewModel
+    @Binding var showSidebar: Bool
     @Binding var showInspector: Bool
     @Binding var customIntervalText: String
     @Binding var showingCustomIntervalAlert: Bool
@@ -231,6 +265,17 @@ struct ToolbarView: View {
             
             // 1. LEFT CONTROLS (Refresh & Settings)
             HStack(spacing: 10) {
+                Button(action: { withAnimation(.spring(response: 0.3)) { showSidebar.toggle() } }) {
+                    Image(systemName: "sidebar.left")
+                        .foregroundColor(showSidebar ? .accentColor : .primary)
+                }
+                .help("Toggle Filters Sidebar")
+                .buttonStyle(.borderless)
+                .frame(width: 36, height: 28)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .cornerRadius(6)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2), lineWidth: 1))
+
                 // A. Кнопка Обновить
                 Button(action: { viewModel.refresh() }) {
                     Image(systemName: "arrow.clockwise")
@@ -340,6 +385,10 @@ struct ToolbarView: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Toggle Inspector")
+                .frame(width: 36, height: 28)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .cornerRadius(6)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2), lineWidth: 1))
                 
                 // Location Alert
                 if !viewModel.isLocationAuthorized {
@@ -402,13 +451,13 @@ struct NetworkInspectorView: View {
                         // Header
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 6) {
-                                Text(network.ssid.isEmpty ? "<Hidden>" : network.ssid)
+                                Text(network.displaySSID)
                                     .font(.title2).bold()
                                     .foregroundColor(network.bssid == viewModel.currentConnectedBSSID ? .accentColor : .primary)
                                     .lineLimit(2)
                                 
                                 HStack {
-                                    Text(network.bssid)
+                                    Text(network.bssid.isEmpty ? "-" : network.bssid)
                                         .font(.caption).monospaced()
                                         .padding(4)
                                         .background(Color.gray.opacity(0.1))
@@ -436,12 +485,18 @@ struct NetworkInspectorView: View {
                         GroupBox("Technical Specs") {
                             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 12) {
                                 DetailRow(label: "Channel", value: "\(network.channel)")
-                                DetailRow(label: "Band", value: network.band)
-                                DetailRow(label: "Width", value: network.channelWidth)
-                                DetailRow(label: "Generation", value: network.generation)
-                                DetailRow(label: "Max Rate", value: "\(Int(network.maxRate)) Mbps")
+                                DetailRow(label: "Band", value: network.bandLabel)
+                                DetailRow(label: "Width", value: network.channelWidthLabel == "-" ? "-" : "\(network.channelWidthLabel) MHz")
+                                DetailRow(label: "Generation", value: network.generationLabel)
+                                DetailRow(label: "Max Rate", value: network.maxRateLabel == "-" ? "-" : "\(network.maxRateLabel) Mbps")
                                 DetailRow(label: "Vendor", value: network.vendor)
                                 DetailRow(label: "Mode", value: network.mode)
+                                if let noise = network.noise {
+                                    DetailRow(label: "Noise", value: "\(noise) dBm")
+                                }
+                                if let snr = network.snr {
+                                    DetailRow(label: "SNR", value: "\(snr) dB")
+                                }
                                 
                                 // Безопасное разворачивание
                                 DetailRow(label: "Streams", value: network.streams.map { "\($0)" } ?? "-")
@@ -457,6 +512,9 @@ struct NetworkInspectorView: View {
                                 DetailRow(label: "Protection Mode", value: network.protectionMode ?? "Unknown")
                                 DetailRow(label: "WPS", value: network.wps ?? "N/A")
                                 DetailRow(label: "Fast Transition (802.11r)", value: network.fastTransition == true ? "Yes" : "No")
+                                if let beacon = network.beaconInterval {
+                                    DetailRow(label: "Beacon Interval", value: "\(beacon) ms")
+                                }
                                 if let cc = network.countryCode {
                                     DetailRow(label: "Country Code", value: cc)
                                 }
