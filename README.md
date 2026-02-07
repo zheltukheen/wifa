@@ -35,6 +35,18 @@ WiFA adds useful commands to the macOS menu bar:
 - **Panels**: Toggle sidebar/inspector, choose bottom panel
 - **Data**: Export CSV
 
+## Release Process
+1. Add a new section to `CHANGELOG.md` (keep history, do not replace):
+   ```
+   ## 1.2.1 — 2026-02-08
+   - Added …
+   ```
+2. Run the release script:
+   ```bash
+   ./release.sh 1.2.1
+   ```
+   This updates `Info.plist`, commits all changes, pushes `main`, creates tag `v1.2.1`, and triggers the automated GitHub Release workflow (build + zip + sha256).
+
 ## Data Sources & Limitations
 WiFA uses CoreWLAN APIs only (no external CLI parsing).  
 Some advanced fields depend on beacon IE availability; if an AP does not broadcast a specific IE, values are shown as “-”.
