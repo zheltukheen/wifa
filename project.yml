@@ -21,6 +21,7 @@ targets:
       - Utils
     resources:
       - Resources
+      - Assets.xcassets
     info:
       path: Info.plist
       properties:

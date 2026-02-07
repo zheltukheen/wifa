@@ -10,6 +10,7 @@
 		36245084ECA4F4F214948642 /* OUIParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBCE61A832436130082EDAEC /* OUIParser.swift */; };
 		B1C2D3E4F5A60718293A4B5C /* oui in Resources */ = {isa = PBXBuildFile; fileRef = A2C1B3D4E5F60718293A4B5C /* oui */; };
 		B1C2D3E4F5A60718293A4B5D /* oui.csv in Resources */ = {isa = PBXBuildFile; fileRef = A2C1B3D4E5F60718293A4B5D /* oui.csv */; };
+		B3C4D5E6F708192A3B4C5D6E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A3C4D5E6F708192A3B4C5D6E /* Assets.xcassets */; };
 		52CF4CC5AD5E69371F099813 /* WiFiScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54097B9F917D9C35FEFF88B6 /* WiFiScanner.swift */; };
 		5FFDD7BB183ACFFF5BF9DC82 /* WifiAnalyzerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FD168DE6176AD8421884C9B /* WifiAnalyzerApp.swift */; };
 		B2C3D4E5F6A708192A3B4C5D /* RawDataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3B4C5D6E7F8091A2B3C4D5E /* RawDataView.swift */; };
@@ -39,6 +40,7 @@
 		A4D2B6C7E9F0123456789ABC /* TableCells.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableCells.swift; sourceTree = "<group>"; };
 		A8C1D2E3F4A5B6C7D8E9F0A1 /* AppCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCommands.swift; sourceTree = "<group>"; };
 		A9C1D2E3F4A5B6C7D8E9F0A2 /* AppUIState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUIState.swift; sourceTree = "<group>"; };
+		A3C4D5E6F708192A3B4C5D6E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A2C1B3D4E5F60718293A4B5C /* oui */ = {isa = PBXFileReference; lastKnownFileType = text; path = oui; sourceTree = "<group>"; };
 		A2C1B3D4E5F60718293A4B5D /* oui.csv */ = {isa = PBXFileReference; lastKnownFileType = text; path = oui.csv; sourceTree = "<group>"; };
 		890310A7A26864B2948ED454 /* MainTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTableView.swift; sourceTree = "<group>"; };
@@ -60,6 +62,7 @@
 			isa = PBXGroup;
 			children = (
 				1FD168DE6176AD8421884C9B /* WifiAnalyzerApp.swift */,
+				A3C4D5E6F708192A3B4C5D6E /* Assets.xcassets */,
 				07941B643945EA5719C1827A /* Models */,
 				24347E94EB870D39608D2E35 /* Services */,
 				C885DF41AD3E4543CD9B224E /* Utils */,
@@ -135,6 +138,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B3C4D5E6F708192A3B4C5D6E /* Assets.xcassets in Resources */,
 				B1C2D3E4F5A60718293A4B5C /* oui in Resources */,
 				B1C2D3E4F5A60718293A4B5D /* oui.csv in Resources */,
 			);

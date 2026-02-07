@@ -92,7 +92,7 @@ struct WiFACommands: Commands {
     private func showAboutPanel() {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "-"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "-"
-        let credits = NSAttributedString(string: "Native macOS Wi‑Fi Analyzer\n© 2026 WiFA Contributors")
+        let credits = NSAttributedString(string: "Native macOS Wi‑Fi Analyzer\n© 2026 WiFA Contributors\nAuthor: zheltukheen")
 
         NSApp.orderFrontStandardAboutPanel(options: [
             NSApplication.AboutPanelOptionKey.applicationName: "WiFA",
