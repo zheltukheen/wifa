@@ -32,9 +32,9 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           awk -v ver="$VERSION" '
-            $0 ~ "^## "ver"($|[[:space:]]|[[:space:]]—)" { in=1; next }
-            in && /^## / { exit }
-            in { print }
+            $0 ~ "^##[[:space:]]+"ver"([[:space:]]|$)" { found=1; next }
+            found && /^##[[:space:]]/ { exit }
+            found { print }
           ' CHANGELOG.md > /tmp/changelog_section.txt
 
           if [ ! -s /tmp/changelog_section.txt ]; then
